@@ -1,4 +1,5 @@
 import type { ComponentDef, Fill, FootprintDef, FootprintLayer, P2, Pad, PinType, Shape, SymbolDef, SymbolPin } from "../model";
+import { octagon } from "../padShape";
 import { kid, kids, numOf, type El } from "./xml";
 
 /**
@@ -138,8 +139,6 @@ export interface EaglePackage {
   description?: string;
   /** Drawings on layers that are not kept. */
   skipped: number;
-  /** Pads whose copper sits off the middle of the hole. */
-  offset: number;
   /** It draws on the board's edge or milling layer. */
   edge: boolean;
 }
@@ -160,7 +159,7 @@ export const plainText = (html: string | undefined): string =>
 /** A package as a footprint. */
 export function packageIn(el: El, restring: Restring = RESTRING): EaglePackage {
   const fp: FootprintDef = { name: el.attrs.name ?? "Package", pads: [], shapes: [] };
-  const out: EaglePackage = { footprint: fp, skipped: 0, offset: 0, edge: false };
+  const out: EaglePackage = { footprint: fp, skipped: 0, edge: false };
   const about = plainText(kid(el, "description")?.text);
   if (about) out.description = about;
   for (const item of el.kids) {
@@ -190,17 +189,20 @@ export function packageIn(el: El, restring: Restring = RESTRING): EaglePackage {
       const d = numOf(item, "diameter") || ringed(drill, restring.pad);
       const shape = item.attrs.shape ?? "round";
       const long = shape === "long" || shape === "offset";
-      if (shape === "offset") out.offset += 1;
+      // An octagon is drawn corner by corner; an offset pad is a long one with its hole at one end (#744).
+      const eight = shape === "octagon";
       fp.pads.push({
         number: item.attrs.name ?? "",
         kind: "thru",
-        shape: shape === "square" ? "rect" : long ? "oval" : "circle",
+        shape: shape === "square" ? "rect" : long ? "oval" : eight ? "polygon" : "circle",
         x: numOf(item, "x"),
         y: numOf(item, "y"),
         w: long ? r4(d * 2) : d,
         h: d,
         drill,
-        ...(long || shape === "square" ? angle : {}),
+        ...(eight ? { points: octagon(d, d) } : {}),
+        ...(shape === "offset" ? { offset: [r4(d / 2), 0] as P2 } : {}),
+        ...(long || shape === "square" || eight ? angle : {}),
       });
     } else if (item.tag === "hole") {
       const drill = numOf(item, "drill");

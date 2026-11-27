@@ -1,4 +1,5 @@
 import type { FootprintDef, FootprintLayer, P2, Pad, PadKind, PadShape, Shape } from "@bettercad/electronics";
+import { copperMiddle, octagon, outlineBox, padOutline } from "@bettercad/electronics/padShape";
 import { movedShape, shapeBox, shapeDist } from "./symbolEdit";
 
 /**
@@ -22,6 +23,7 @@ export const PAD_SHAPES: { id: PadShape; label: string }[] = [
   { id: "roundrect", label: "Rounded rectangle" },
   { id: "oval", label: "Oval" },
   { id: "circle", label: "Round" },
+  { id: "polygon", label: "Custom outline" },
 ];
 /** The outline layers a shape can be drawn on. Copper shapes come only from imported footprints. */
 export const OUTLINE_LAYERS: { id: Exclude<FootprintLayer, "copper">; label: string }[] = [
@@ -115,12 +117,96 @@ export function setOutline(fp: FootprintDef, id: LandId, patch: Record<string, u
   return { ...fp, shapes: fp.shapes.map((s, k) => (k === i ? ({ ...s, ...patch } as FpShape) : s)) };
 }
 
+/**
+ * A pad drawn corner by corner (#744): a surface pad shaped like the outline, placed at the middle of its box, shaped
+ * like the last pad made for everything else. Null with fewer than three corners.
+ */
+export function addOutlinePad(fp: FootprintDef, corners: P2[], like?: Pad): { fp: FootprintDef; id: LandId } | null {
+  const clean = corners.filter((p, i) => i === 0 || p[0] !== corners[i - 1]![0] || p[1] !== corners[i - 1]![1]);
+  if (clean.length > 2 && clean[0]![0] === clean.at(-1)![0] && clean[0]![1] === clean.at(-1)![1]) clean.pop();
+  if (clean.length < 3) return null;
+  const { w, h, mid } = outlineBox(clean);
+  if (!w || !h) return null;
+  const from = like ?? fp.pads.filter((p) => p.kind === "smd").at(-1);
+  const pad: Pad = {
+    number: nextPadNumber(fp),
+    kind: "smd",
+    shape: "polygon",
+    x: mid[0],
+    y: mid[1],
+    w,
+    h,
+    points: clean.map((p): P2 => [r4(p[0] - mid[0]), r4(p[1] - mid[1])]),
+    ...(from?.back ? { back: true } : {}),
+  };
+  return { fp: { ...fp, pads: [...fp.pads, pad] }, id: `p${fp.pads.length}` };
+}
+
+/** Sets the pads' shape. A custom outline starts as the pad's own rectangle; leaving one drops its corners. */
+export function setPadShape(fp: FootprintDef, ids: Iterable<LandId>, shape: PadShape): FootprintDef {
+  const set = new Set(ids);
+  return {
+    ...fp,
+    pads: fp.pads.map((p, i) => {
+      if (!set.has(`p${i}`) || p.shape === shape) return p;
+      const next: Pad = { ...p, shape };
+      delete next.round;
+      delete next.points;
+      if (shape === "roundrect") next.round = 0.25;
+      if (shape === "polygon") {
+        const [x, y] = [r4(p.w / 2), r4(p.h / 2)];
+        next.points = [
+          [-x, -y],
+          [x, -y],
+          [x, y],
+          [-x, y],
+        ];
+      }
+      return next;
+    }),
+  };
+}
+
+/** Gives a pad a custom outline, its size following the outline's box. Null when there are fewer than three corners. */
+export function setPadCorners(fp: FootprintDef, id: LandId, corners: P2[]): FootprintDef | null {
+  const pad = fp.pads[index(id)];
+  if (!pad || corners.length < 3) return null;
+  const { w, h } = outlineBox(corners);
+  if (!w || !h) return null;
+  return setPads(fp, [id], { shape: "polygon", points: corners.map((c): P2 => [r4(c[0]), r4(c[1])]), w, h, round: undefined });
+}
+
+/** Turns the pads into octagons the size of their box, as Eagle draws them. */
+export const makeOctagon = (fp: FootprintDef, ids: Iterable<LandId>): FootprintDef =>
+  [...ids].filter(isPad).reduce((f, id) => {
+    const p = f.pads[index(id)];
+    return (p && setPadCorners(f, id, octagon(p.w, p.h))) || f;
+  }, fp);
+
+/** Corners as typed: "x y" pairs, split by commas or semicolons. Null when one is not two numbers. */
+export function parseCorners(text: string): P2[] | null {
+  const parts = text
+    .split(/[;,\n]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const pts = parts.map((t) => t.split(/\s+/).map(Number));
+  return pts.every((p) => p.length === 2 && p.every(Number.isFinite)) ? pts.map((p) => [p[0]!, p[1]!] as P2) : null;
+}
+export const cornersText = (pts: P2[]): string => pts.map((p) => `${p[0]} ${p[1]}`).join(", ");
+
 /** A pad's box on the footprint, turned pads as their turned box (whole quarter turns) or their widest reach. */
 export function padBox(p: Pad): { x1: number; y1: number; x2: number; y2: number } {
+  const outline = padOutline(p);
+  if (outline) {
+    const xs = outline.map((q) => q[0]);
+    const ys = outline.map((q) => q[1]);
+    return { x1: Math.min(...xs), y1: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+  }
+  const [cx, cy] = copperMiddle(p);
   const a = (((p.angle ?? 0) % 180) + 180) % 180;
   const reach = p.shape === "circle" ? Math.max(p.w, p.h) : Math.hypot(p.w, p.h);
   const [w, h] = p.shape === "circle" ? [reach, reach] : a < 1 || a > 179 ? [p.w, p.h] : Math.abs(a - 90) < 1 ? [p.h, p.w] : [reach, reach];
-  return { x1: p.x - w / 2, y1: p.y - h / 2, x2: p.x + w / 2, y2: p.y + h / 2 };
+  return { x1: cx - w / 2, y1: cy - h / 2, x2: cx + w / 2, y2: cy + h / 2 };
 }
 
 /** What is under a point, pads before outlines, nearest first. `tol` is in mm. */

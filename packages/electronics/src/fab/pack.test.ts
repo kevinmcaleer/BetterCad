@@ -273,12 +273,11 @@ describe("the order pack", () => {
       blocks: false,
       text: "No part number for assembly: J1, R1. Add them in the parts list, or order the bare board.",
     });
-    expect(by(pack)["pour-clash"]).toBeUndefined();
     expect(by(pack).parts!.text).toBe("2 parts on 2 rows of the parts list.");
     expect(by(orderPack(d, "generic", "x")!)["part-numbers"]).toBeUndefined();
     const done = orderPack(setSupplier(d, [id(d, "R1"), id(d, "J1")], { lcsc: "C1" }), "jlcpcb", "x")!;
     expect(by(done)["part-numbers"]).toMatchObject({ ok: true });
-    // Two pours that cut into each other stop the export.
+    // Two pours that cut into each other no longer stop the export (#750).
     const p = pad("J1", "2");
     let two = addTrack(d, nets[1], "bottom", [p, [p[0] + 3, p[1]]], 0.25);
     two = addPour(two, nets[0], "bottom", [
@@ -288,6 +287,6 @@ describe("the order pack", () => {
       [p[0] + 2, p[1] + 2],
     ]);
     two = setPour(two, two.board!.pours[1]!.id, { priority: 1 });
-    expect(by(orderPack(two, "jlcpcb", "x")!)["pour-clash"]).toMatchObject({ ok: false, blocks: true });
+    expect(orderPack(two, "jlcpcb", "x")!.checks.filter((c) => c.blocks && !c.ok)).toEqual([]);
   });
 });

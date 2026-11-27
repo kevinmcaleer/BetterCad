@@ -54,7 +54,9 @@ import { meshTree, type MeshTree } from "../collide";
 import { sweepClashes, type SweepOptions, type SweepResult } from "../sweep";
 import { linkTransforms, mat4InvertRigid, placeMatrix } from "../pose";
 import { resolvePose } from "../drivelinks";
-import { catalogueShape } from "./catalogue";
+import { catalogueShape, gatheredShape } from "./catalogue";
+import { drawnBody } from "@bettercad/electronics/pcb/bodies";
+import { drawBodiesWith } from "@bettercad/electronics/pcb/solid";
 import { baseName, fromBase64, type ImportFormat } from "../imports";
 
 /**
@@ -138,6 +140,7 @@ export const partKey = (p: Part, q: Quality) =>
     p.sweep ?? null,
     p.imported ?? null,
     p.catalogue ? [p.catalogue.id, p.catalogue.version, p.catalogue.model] : null,
+    p.blocks ?? null,
     p.copy ?? null,
     p.ops ?? null,
     q,
@@ -145,6 +148,10 @@ export const partKey = (p: Part, q: Quality) =>
 
 /** How many part-way bodies to keep: enough for a few bodies' worth of steps while one is dragged or undone. */
 export const STEPS_KEPT = 240;
+// Where the geometry is built, board parts get their true bodies (#752). The app loads the same code when it opens a
+// model with a board, so its list of bodies matches.
+drawBodiesWith(drawnBody);
+
 const PICKS_KEPT = 4000;
 /** How many board part shapes keep their mesh (#650): more kinds of part than a hobby board has. */
 const SHAPES_KEPT = 200;
@@ -219,6 +226,7 @@ function primitive(oc: OC, p: Part): TopoDS_Shape {
   switch (p.kind) {
     case "solid":
       if (p.catalogue) return catalogueShape(oc, p.catalogue);
+      if (p.blocks) return gatheredShape(oc, p.blocks);
       return p.sweep ? sweepOf(oc, p.sweep) : p.loft ? loftOf(oc, p.loft) : p.revolve ? revolveOf(oc, p.revolve) : prismOf(oc, p.prism!);
     case "box":
       return box(oc, p.size);
@@ -438,7 +446,7 @@ export class ModelBuilder {
         if (src.faces) namer.add(local, src.faces);
       } else
         local =
-          p.kind === "solid" && !p.catalogue
+          p.kind === "solid" && !p.catalogue && !p.blocks
             ? p.sweep
               ? sweepOf(oc, p.sweep, namer)
               : p.loft

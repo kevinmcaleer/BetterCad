@@ -27,6 +27,9 @@ import { copperOf, netRules } from "../pcb/copper";
 import { teardrops } from "../pcb/teardrops";
 import { SPOKE, THERMAL_GAP } from "../pcb/pour";
 import { markPad } from "../pcb/marks";
+import { NOTE_PEN, NOTE_SIZE, dimensionParts } from "../pcb/notes";
+import { boardTextLook } from "../fab/font";
+import { pictureRects } from "../pcb/picture";
 import { layersOf, viaKind, viaLayers } from "../pcb/stack";
 import { Str, writeSexpr, type Node } from "./sexpr";
 
@@ -236,20 +239,33 @@ function padNode(pad: Pad, side: Side, angle: number, net?: { code: number; name
   const type = pad.kind === "thru" ? "thru_hole" : pad.kind === "npth" ? "np_thru_hole" : "smd";
   const at = local([pad.x, pad.y], side);
   const turnBy = ((angle % 360) + 360) % 360;
+  // A polygon pad is KiCad's custom pad: a small round anchor at its middle, and the outline as a filled primitive.
+  const custom = pad.shape === "polygon" && (pad.points?.length ?? 0) >= 3;
+  const anchor = Math.min(0.2, Math.min(pad.w, pad.h) / 4);
   const out: Node[] = [
     "pad",
     s(pad.kind === "npth" ? "" : pad.number),
     type,
-    pad.shape,
+    custom ? "custom" : pad.shape,
     ["at", n(at[0]), n(at[1]), ...(turnBy ? [n(turnBy)] : [])],
-    ["size", n(pad.w), n(pad.h)],
+    custom ? ["size", n(anchor), n(anchor)] : ["size", n(pad.w), n(pad.h)],
   ];
-  if (pad.kind !== "smd" && pad.drill) out.push(pad.slot && pad.slot > pad.drill ? ["drill", "oval", n(pad.slot), n(pad.drill)] : ["drill", n(pad.drill)]);
+  // Copper off the hole's middle (#744): KiCad keeps it with the drill, in the pad's own turn.
+  const off = pad.offset && (pad.offset[0] || pad.offset[1]) ? local(pad.offset, side) : null;
+  const offset: Node[] = off ? [["offset", n(off[0]), n(off[1])]] : [];
+  if (pad.kind !== "smd" && pad.drill)
+    out.push(pad.slot && pad.slot > pad.drill ? ["drill", "oval", n(pad.slot), n(pad.drill), ...offset] : ["drill", n(pad.drill), ...offset]);
+  else if (off) out.push(["drill", ...offset]);
   out.push(pad.kind === "smd" ? ["layers", s(`${f}.Cu`), ...(pad.noPaste ? [] : [s(`${f}.Paste`)]), s(`${f}.Mask`)] : ["layers", s("*.Cu"), s("*.Mask")]);
   if (pad.shape === "roundrect") out.push(["roundrect_rratio", n(pad.round ?? 0.25)]);
   if (pad.maskMargin !== undefined) out.push(["solder_mask_margin", n(pad.maskMargin)]);
   if (pad.pasteMargin !== undefined && pad.kind === "smd" && !pad.noPaste) out.push(["solder_paste_margin", n(pad.pasteMargin)]);
   if (net && pad.kind !== "npth") out.push(["net", String(net.code), s(net.name)]);
+  if (custom) {
+    out.push(["options", ["clearance", "outline"], ["anchor", "circle"]]);
+    const pts = pad.points!.map((p) => local(p, side));
+    out.push(["primitives", ["gr_poly", ["pts", ...pts.map((p): Node => ["xy", n(p[0]), n(p[1])])], ["width", "0"], ["fill", "yes"]]]);
+  }
   return out;
 }
 
@@ -697,7 +713,7 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
     }
   }
   for (const t of board.texts) {
-    const bottom = t.layer.endsWith("bottom");
+    const look = boardTextLook(t);
     out.push([
       "gr_text",
       s(t.text),
@@ -706,10 +722,77 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       ["tstamp", uuidOf(t.id)],
       [
         "effects",
-        ["font", ["size", n(t.size), n(t.size)], ["thickness", n(Math.max(0.1, t.size * 0.15))]],
-        ["justify", "left", "bottom", ...(bottom ? ["mirror"] : [])],
+        ["font", ["size", n(t.size), n(t.width ?? t.size)], ["thickness", n(Math.max(0.1, t.size * 0.15))]],
+        ["justify", "left", "bottom", ...(look.mirror ? ["mirror"] : [])],
       ],
     ]);
+  }
+
+  // Pictures on the silkscreen (#751): each run of ink a filled rectangle, as the Gerber file draws them.
+  for (const pic of board.pictures ?? [])
+    pictureRects(pic).forEach((r, i) =>
+      out.push([
+        "gr_poly",
+        ["pts", ...([[r.x1, r.y1], [r.x2, r.y1], [r.x2, r.y2], [r.x1, r.y2]] as P2[]).map((p) => ["xy", ...at(p)])], // prettier-ignore
+        stroke(0, "solid"),
+        ["fill", "solid"],
+        ["layer", s(BOARD_LAYERS[pic.layer])],
+        ["tstamp", uuidOf(`${pic.id}:${i}`)],
+      ]),
+    );
+
+  // The notes (#749) go on KiCad's drawings layer: lines, text, and dimensions KiCad measures again itself.
+  const drawings: Node[] = ["layer", s("Dwgs.User")];
+  for (const note of board.notes ?? []) {
+    if (note.kind === "line")
+      for (let i = 0; i + 1 < note.pts.length; i += 1)
+        out.push([
+          "gr_line",
+          ["start", ...at(note.pts[i]!)],
+          ["end", ...at(note.pts[i + 1]!)],
+          stroke(note.width ?? NOTE_PEN, "solid"),
+          drawings,
+          ["tstamp", uuidOf(`${note.id}:${i}`)],
+        ]);
+    else if (note.kind === "text")
+      out.push([
+        "gr_text",
+        s(note.text),
+        ["at", ...at([note.x, note.y]), ...(note.angle ? [n(note.angle)] : [])],
+        drawings,
+        ["tstamp", uuidOf(note.id)],
+        ["effects", ["font", ["size", n(note.size), n(note.size)], ["thickness", n(Math.max(0.1, note.size * 0.15))]], ["justify", "left", "bottom"]],
+      ]);
+    else {
+      const { text: words } = dimensionParts(note);
+      const size = note.size ?? NOTE_SIZE;
+      out.push([
+        "dimension",
+        ["type", "aligned"],
+        drawings,
+        ["tstamp", uuidOf(note.id)],
+        ["pts", ["xy", ...at(note.a)], ["xy", ...at(note.b)]],
+        ["height", n(-note.offset)],
+        [
+          "gr_text",
+          s(words.text),
+          ["at", ...at([words.x, words.y]), n(words.angle)],
+          drawings,
+          ["tstamp", uuidOf(`${note.id}:text`)],
+          ["effects", ["font", ["size", n(size), n(size)], ["thickness", n(Math.max(0.1, size * 0.15))]]],
+        ],
+        ["format", ["prefix", s("")], ["suffix", s("")], ["units", "2"], ["units_format", "1"], ["precision", "2"]],
+        [
+          "style",
+          ["thickness", n(NOTE_PEN)],
+          ["arrow_length", n(size)],
+          ["text_position_mode", "0"],
+          ["extension_height", "1"],
+          ["extension_offset", "0.5"],
+          "keep_text_aligned",
+        ],
+      ]);
+    }
   }
 
   for (const t of board.tracks)
@@ -750,7 +833,20 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       p.thermal === false ? ["connect_pads", "yes", ["clearance", n(gap)]] : ["connect_pads", ["clearance", n(gap)]],
       ["min_thickness", n(Math.max(0.1, board.rules.minTrackWidth))],
       ["filled_areas_thickness", "no"],
-      ["fill", ["thermal_gap", n(THERMAL_GAP)], ["thermal_bridge_width", n(SPOKE)]],
+      [
+        "fill",
+        ...(p.hatch ? [["mode", "hatch"] as Node[]] : []),
+        ["thermal_gap", n(THERMAL_GAP)],
+        ["thermal_bridge_width", n(SPOKE)],
+        // A hatched pour (#747): KiCad's lines, gaps and their turn.
+        ...(p.hatch
+          ? ([
+              ["hatch_thickness", n(p.hatch.width)],
+              ["hatch_gap", n(p.hatch.gap)],
+              ["hatch_orientation", "0"],
+            ] as Node[])
+          : []),
+      ],
       ["polygon", ["pts", ...p.outline.map((q) => ["xy", ...at(q)])]],
     ]);
   }

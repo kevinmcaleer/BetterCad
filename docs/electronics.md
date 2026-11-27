@@ -269,7 +269,19 @@ The board's code is in `packages/electronics/src/pcb`, imported by subpath (`/pc
 
 **Copper as shapes** (`copper.ts`). Every piece of copper is a core (a point, a line or a convex outline) grown by a
 radius: a via is a point, a track a line, a rounded pad a rectangle with its corners pulled in. `gap(a, b)` is the
-distance between the cores less both radii, which is exact for every pad shape we have. `copperGroups` joins pieces of
+distance between the cores less both radii, which is exact for every pad shape we have.
+
+**Pad shapes** (`padShape.ts`, #744). Besides rectangles, rounded rectangles, ovals and circles, a pad can be a
+`polygon`: its corners are in `points`, around the copper's middle and turned with the pad, with `w` and `h` its box.
+A through-hole pad's copper can sit off the middle of its hole by `offset`, in the pad's own turn, as KiCad keeps it.
+`boardPads` gives each such pad its copper's `centre` and its `outline` on the board, so the board check, pours,
+Gerber (a polygon is a region, its mask opening the region with its edge drawn round by a pen twice the gap wide),
+IPC-2581 (a `Contour`), the drawing and the 3D picture all use them. The ring check takes the offset off the ring.
+In the footprint editor, Pad outline draws one corner by corner, a picked pad's shape can be set to Custom outline
+and its corners typed, Make it an octagon cuts a pad's corners at 45°, and a through-hole pad's copper can be moved
+off its hole. KiCad's custom pads come in as polygons: one `gr_poly` round the anchor as it is, any other mix of
+pieces as the hull round them all. They go out as custom pads with a small round anchor, and an offset goes out with
+the drill. `copperGroups` joins pieces of
 one net that touch on a shared layer, so the ratsnest (`boardState` then `ratsnest`) leaves out pads that copper
 already connects, through vias and across layers. A net can be given a colour and have its unrouted lines hidden
 (`board.netLooks`, `setNetLook` in `netclass.ts`, #740) from its section in the inspector. The colours are a fixed
@@ -281,11 +293,25 @@ it while the net is lit. Hiding only skips the drawing: the counts and the board
 drops a via and carries on on the other layer. The width comes from the net's class, else the board's rules, or from
 the Width list. With Keep clear on, `blockers` stops a piece that would come closer to another net, a hole or the edge
 than the rules allow, and says what is in the way; turn it off to route anywhere and let the board check find it.
-Pieces laid one after another become one track. There is no push and shove (#646) and no autorouter (#647).
+Pieces laid one after another become one track. Push and walk-round are below (#646, #753); the autorouter is #647.
 
 **Placing.** Drag parts on the grid (0.1 to 2.54 mm, in Layers), or pick one and type X, Y and turn in the part
 card. Lock (K) pins parts down; with several picked, the card lines them up or spaces them evenly. A part picked on
 the schematic stays picked on the board.
+
+**Selection filter** (#748). Pick, on the Layers card, says what a click or a drag box may take: parts (and their
+pads), tracks, vias, pours (and keep-outs), text (and pictures) and holes (and fiducials and test points), and
+whether locked parts count. `hitBoard` and `boxBoard` in `web/src/electronics/hitBoard.ts` take the filter, so a
+click on something left out reaches what is under it. Routing still starts from any copper. A drag box takes the
+parts it touches and anything else wholly inside it.
+
+**Notes** (#749, `pcb/notes.ts`). `board.notes` holds dimensions, lines and text for whoever makes the board: never
+copper, never silkscreen, nothing the board check measures. Dimension (in the Notes group) takes two points, which
+snap as Measure's do, then a third for where its line goes; its length is worked out each time it is drawn
+(`dimensionParts`), so moving an end keeps it right. Note line lays a line with each click until Esc. The Text tool
+writes on the notes when its Write on list says so. Everything draws a note through `noteStrokes`: the Notes layer
+on the board, the notes Gerber file (`notesFile`, X2 function `OtherDrawing,Notes`, with the edge for reference,
+added to the order zip as `-Notes.gbr` and not stepped across a panel), and the first page of the assembly drawing.
 
 **Holes and text.** Hole (H) adds an M3 mounting hole; the card changes the screw size, the drill and whether it has
 a copper ring. Text (T) writes on the silkscreen of the side being worked on.
@@ -324,6 +350,14 @@ the ratsnest still shows, the short ones first, and only ever adds copper, so a 
   before it is kept. A test routes the sample board from bare and asks the board check for an empty list.
 - **Options.** `nets`, `parts` and `layers` (one side only, which also means no vias). A track through a pour can cut
   it in two, so the router looks at the ratsnest again, up to three times.
+- **Fan-out** (`pcb/fanout.ts`, #746). `fanOut` gives each of a chip's surface pads that still has a connection to
+  make a short track and a via: straight out along the pad, out and across at 45°, or in under the chip, the nearest
+  place that keeps every rule, going round the chip in order so neighbours take turns. A pad left with no room tries
+  again before its nearest neighbours, and a chip too fine for the net's vias is fanned again with the smallest via
+  the rules allow (least drill plus two least rings), which is what a 0.5 mm QFN needs. Tests fan out SOIC (1.27 mm),
+  TSSOP (0.65 mm), QFP (0.8 mm) and QFN (0.5 mm) clean. Before it routes, the autorouter fans out every pad it
+  cannot leave from its grid (`fanout: false` turns that off), and a connection from a fanned pad starts from its
+  via. Fan out on a part's card does it by hand.
 - **In the app.** Autoroute on the PCB tools opens a card (`AutoRoute.tsx`). The router runs in a worker of its own
   (the board check's script, `boardCheck.worker.ts`, so the board's model is bundled for a worker once), which sends each route back as it is found; Stop ends the worker and keeps those. They go
   on the board in one edit, so one undo takes them out. If the board changed meanwhile nothing is laid.
@@ -333,17 +367,33 @@ pads that fall between grid lines; the connections it finds no way for are liste
 
 ## Push, length and pairs (#646)
 
-`pcb/shove.ts`, used by the route tool in `BoardCanvas.tsx`.
+`pcb/push.ts` (loaded with the route tool or with Push on) and `pcb/shove.ts`, used by the route tool in `BoardCanvas.tsx`.
 
-- **Push.** With Push on, a run that comes too close to another net's track asks `shove` for room. The piece in the
-  way is cut so only the stretch beside the new run moves, then slid sideways with `slidePiece` (#640) just far
-  enough, with 45° pieces at each end. What it then comes too close to is pushed in turn, three deep at most. Pads,
-  vias, text, keep-outs and the board's edge never move: a push into one of them is no push, and the track stops as
-  before. Everything that moved is measured with `blockers` before it is kept, and the run and its pushes are one
-  edit, so one undo puts them back.
+- **Push** (#646, #753). With Push on, a run that comes too close to another net's track or via asks `shove` for
+  room. A via moves straight away from the nearest point of what pushes it, and the ends of its own tracks go with it.
+  A track's piece in the way is cut so only the stretch beside what pushes moves, then slid sideways with
+  `slidePiece` (#640) just far enough, with 45° pieces at each end; of several pieces too close, the one that lies
+  most beside the pusher moves, so a piece met end on is never the one asked to go sideways. What moved pushes in
+  turn, four deep at most. Pads, plated holes, text, keep-outs and the board's edge never move. Everything that moved
+  is measured with `blockers` before it is kept, and the run and its pushes are one edit, so one undo puts them back.
+- **Walk round** (#753, `walkRound`, `routeOn`). With Keep clear on, a piece that cannot go straight, the other way
+  round its bend, or by pushing walks round instead: an A* search in eight directions on a grid over the ground
+  between the two ends and 6 mm round it (no more than 60,000 cells, so the pointer never stalls), each piece of
+  copper marking only the cells too close to it and the board's edge a wall. A small cost on each turn keeps the
+  corners few, and the result is pulled tight to straight runs and 45° corners, then measured with `blockers`. With
+  Push on it first walks round only what cannot move and pushes the rest aside.
+- **Drag with push** (#753, `dragPushing`). With Push on, sliding a piece of track in Select pushes the tracks and
+  vias it comes too close to, worked out from the board as it was when the piece was picked up; where there is no
+  room the piece stays where it last fitted. The 1,750 part board drags and walks in well under a second.
 - **Length.** The route bar shows the net's length as you go, the piece on the pointer counted, and against a target
   when one is typed. A track's card shows its net's length; typing a longer one puts flat-topped wiggles with 45°
   corners in its longest straight piece, on whichever side has room (`tuneLength`). Tuning only makes a net longer.
+- **Matched lengths** (`pcb/match.ts`, #745, loaded when a track is picked). Pick tracks on several nets and press
+  Match lengths: each net is tuned to the longest, within a tolerance (0.1 mm unless you type one), its wiggles in one
+  piece when they fit and shared out over several when not (`matchLengths`). A track on one half of a pair shows both
+  lengths and the skew, and Match the pair tunes the shorter one. The nets are kept as a group (`board.matched`, a net
+  in one group at a time), and the board check's "Nets matched in length have drifted apart" warning says when later
+  routing pulls a group further apart than its tolerance. Stop matching takes the group apart.
 - **Pairs.** With Pair on, starting on a net whose name has a partner (D+ and D-, USB_P and USB_N, DP and DM, TXP and
   TXN) finds the partner's pad within 8 mm and routes both: you click the line between them, and `pairRuns` lays one
   track each side of it at the track width plus the clearance, mitred so the gap holds round every corner. Clicking
@@ -420,6 +470,14 @@ which pieces are islands that reach nothing; islands are dropped. Pads a pour jo
 and the board check both know. The card sets the net, the side, spokes or solid joins, and which pour fills first
 where two overlap. `pour-empty` (a warning) finds a pour that fills nothing. Spokes are set per pour, not per pad.
 
+**Hatched pours** (#747). A pour's Fill can be Hatched, with a line width and a gap (`pour.hatch`). `hatchHoles` cuts
+square openings `gap` wide on a grid of `width + gap` lined up with the board's origin, only where a whole line is
+left round the area's edge; they are taken out just after the area, so spokes still cross them, on screen and in the
+Gerber file alike, and the fill's grid leaves them bare so islands and joins stay right. The board check treats the
+lines as tracks: lines narrower than the least track width are an error. KiCad zones go out and come in with
+`(mode hatch)`, `hatch_thickness` and `hatch_gap` (hatching turned at an angle comes in square, with a note), and
+Eagle's `pour="hatch"` polygons come in with their width and their spacing less the width as the gap.
+
 **Keep-outs and cut-outs** (the Keep-out tool, O). The same corner-by-corner drawing makes an area tracks, vias and
 pours stay out of (parts too, if ticked in its card), or a hole of any shape cut through the board. Route stops at a
 keep-out when Keep clear is on, pours flow round it, and the board check lists what sits in one. Areas are picked by
@@ -477,7 +535,8 @@ a bit a cell (`BoardPicture`, at most 200 cells across, `pcb/picture.ts`), so no
 the width (the height follows), the side, and **Swap ink and bare board** for a light logo on a dark ground; a note
 says when its finest detail is thinner than the board rules print. It is drawn in the silkscreen file as filled
 regions, flipped on the bottom so it reads from underneath, cut away over pads like any ink, and the board check
-warns when it crosses one. Pictures are not written to KiCad files yet.
+warns when it crosses one. Pictures go to KiCad as filled silkscreen polygons, a rectangle for each run of ink
+(#751); they come back as silkscreen drawings, not as a picture.
 
 **A pad's own way into a pour** (#641). A pour joins its pads with spokes or all round. One pad can differ: a
 part's card lists its pads that are on a poured net, each with As the pour says, With spokes or All round
@@ -574,6 +633,22 @@ minute. Holes under 0.5 mm are left out of the solid, and so are holes that brea
 picture still shows them. Bodies are named by reference (R1, U3), stand on their own side of the board, and belong
 to one component named Board, so joints, Move, Hide and the clash check treat it as any other component.
 
+**True bodies** (#752, `pcb/bodies.ts`). Most starter parts are drawn as the part that comes back from the fab, in
+boxes and cylinders worked out from the footprint and the package's size: a header's black strip and gold pins
+through the board (a socket's tall housing with its tails underneath), a resistor's black body between tinned ends,
+a capacitor in tan, an LED with its lens, a DIP on its standoffs with a lead through every pad, gull-wing leads from
+SOIC, SSOP, TSSOP, MSOP and SOT pads up to the body, JST PH, XH and SH housings in natural white, a PCM12 slide
+switch with its lever, tactile buttons, USB sockets, barrel jacks, green screw terminals, round LEDs and cans,
+TO-92s, TO-220s with their tab, QFN and TQFP chips, ESP32 modules with the can over the chip and the antenna end
+bare, and DevKit boards standing on their pin headers. The list was agreed with Kev on 2026-11-27, with the bodies
+drawn in our own code (his choice over KiCad's STEP models). A resistor and a capacitor of the same size are told apart by
+the reference's letters. Each material is a body of its own (`R1`, `R1.1`), so each wears its colour; the blocks are
+gathered as they stand rather than joined (`gatheredShape` in `occt/catalogue.ts`), which builds the whole sample
+board in under a second where joining a 20-pin header's pins took over one. The same part used many times is
+meshed once, as before. Bodies are drawn in our own code (MIT) from sizes, so there are no files to fetch or credit;
+a part no rule knows, or one with a STEP file or a robot catalogue part, keeps what it had. A connector opening is
+still cut round the part's box. `header(pins, socket)` in the basics is a 2.5 mm pin header unless it is a socket.
+
 The bodies are reference bodies that draw solid (`pcb` on the part): they are there to design round, they do not
 print, and a slicer export leaves them out. To send the board to other CAD, right-click its bodies and choose
 Export; STEP keeps one body per part with its name. The clash check sees them when Include references is on.
@@ -635,8 +710,13 @@ that differs from its board does not carry its own across; coming in, KiCad 8's 
 A pour is painted the way the screen paints it, with dark and clear polarity in the same order: the area, the
 rings round its own pads out, the spokes back in, then everything it keeps clear of out, and last the islands the
 fill dropped. What lies outside the board is cleared with one area that has the board as a hole in it. The format
-has no way to clip one pour's clearing to its own area, so two pours on different nets on one side that run into
-each other cannot always be painted truly; `pourClashes` finds that case and the order card refuses to export it.
+has no way to clip one pour's clearing to its own area, so when two pours on different nets on one side run into
+each other, painting the later one would cut copper out of the earlier one round its own pads and tracks (#750).
+`cutPours` finds each pour that would be cut, and it is written after the painted ones as its finished fill instead:
+`fillRects` turns its fill, on a grid of up to a million cells (no coarser than 0.05 mm where that fits), into
+rectangles of copper with nothing cleared, so nothing drawn later cuts it and it cuts nothing. Each knock takes out
+three quarters of a cell more than its reach, so no corner of a rectangle comes nearer than the rules allow. Its
+edges are steps of one cell; the painted pours keep their exact edges. Any pours now export.
 
 **Text** (`font.ts`). Board houses are sent lines, not fonts, so silkscreen and copper text is drawn with our own
 stroke font: capitals, digits and common marks on a 4 by 6 grid, small letters as small capitals. The PCB view
@@ -747,6 +827,9 @@ What changes on the way out:
 - A power symbol carries its net's name on its hidden pin, where KiCad 7 reads it, and as its value, where KiCad 8
   and 9 do.
 - Pours go out as zone outlines. KiCad fills them itself (Edit, Fill all zones). Keep-outs go out as rule areas.
+- The board's notes go on User.Drawings: lines, text, and dimensions as aligned dimensions KiCad measures again. Coming
+  in, drawings on User.Drawings, User.Comments and both fabrication layers become notes, circles and arcs as short
+  straight runs, and aligned and orthogonal dimensions become ours.
 - Ids are made from the design's own, so the same design always writes the same files.
 
 How it is checked: `export.test.ts` reads the libraries back with our own KiCad readers and holds the sample's
@@ -787,14 +870,15 @@ What it reads:
 
 What does not come across, each listed in the dialog when a project has it: copper on inside layers (the top and
 bottom still come in), blind and buried vias, buses as drawings (their wires still join by name), group buses
-between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions, drawings on fabrication and
-user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
+between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions other than straight ones
+(leaders, radii, centre marks), drawings on user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
 flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
-middle of its hole comes in with the hole in the right place and the copper centred on it, so the board check can
-report a clearance there that KiCad does not. Text keeps its place, size, turn and lines, but not KiCad's separate
-width or its mirror flag, so a line of text can come in a little longer or shorter than KiCad draws it. A board
-without its schematic does not open: the nets of a design here
-come from its schematic. A local label and a global label with one name are one net here; in KiCad they can be two.
+middle of its hole keeps it there (#744). Text keeps its place, size, turn and lines, and its letters' own width and
+its mirror flag both ways (#751): `mirror` on a board text reads it the other way from its side's usual, and `width`
+is a letter's width where it differs from its height (`boardTextLook` in `fab/font.ts`). A board without its
+schematic does not open: the nets of a design here come from its schematic. A local label on the top sheet with the
+name of a global label is another net in KiCad, so it stays apart here as `/name`, KiCad's own name for it, and the
+import says so (#751).
 
 How it is checked: `kicad/project.test.ts` writes the sample and the fixture that turns everything every way out as
 KiCad projects and reads them back: the same parts, nets, pads and board check, and nothing for Push to PCB to do.
@@ -846,8 +930,8 @@ How Eagle's things become ours:
 What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, buses
 as drawings, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
 drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as short
-straight pieces, hatched pours as solid ones, and octagon pads as round ones. A pad Eagle draws off the middle of its
-hole ("offset") comes in with the hole in the right place and the copper centred on it. Assembly variants are not
+straight pieces. Hatched pours keep their hatching (#747). Octagon pads come in drawn corner by corner, and a pad Eagle draws
+off the middle of its hole ("offset") keeps its copper where Eagle has it (#744). Assembly variants are not
 read, apart from a part marked not populated. Files from Eagle older than 6 are binary and are refused with a note
 to save them from a newer Eagle. A board without its schematic does not open.
 

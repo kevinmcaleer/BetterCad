@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { lazy, Suspense, useId, useState } from "react";
 import {
   boardPads,
   netlist,
@@ -15,7 +15,8 @@ import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
 import { invertInk, setPicture } from "@bettercad/electronics/pcb/picture";
 import { setMark } from "@bettercad/electronics/pcb/marks";
-import { pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
+import { NOTE_PEN, NOTE_SIZE, dimensionText, setNote } from "@bettercad/electronics/pcb/notes";
+import { HATCH, pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
 import {
   SCREWS,
   alignParts,
@@ -32,6 +33,8 @@ import {
 import { Button, NumberField, type IconName } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import NetProps from "./NetProps";
+
+const LengthMatch = lazy(() => import("./LengthMatch"));
 import { eui } from "./ui";
 
 const ALIGN: { how: Align; label: string; icon: IconName }[] = [
@@ -155,6 +158,37 @@ function SwapPins({ design, edit, part }: { design: ElectronicsDesign; edit: EEd
   );
 }
 
+/** Fan-out (#746): a short track and a via from each of a chip's surface pads that has a connection to make. */
+function FanOut({ design, edit, part }: { design: ElectronicsDesign; edit: EEdit; part: string }) {
+  const [said, setSaid] = useState("");
+  const pads = boardPads(design).filter((p) => p.part === part && p.pad.kind === "smd" && p.net).length;
+  if (pads < 3) return null;
+  const go = async () => {
+    const { fanOut } = await import("@bettercad/electronics/pcb/fanout");
+    const made = fanOut(design, [part]);
+    if (made.fanned) edit(() => made.design, "Fan out");
+    const stuck = made.stuck.map((s) => s.pad);
+    setSaid(
+      [
+        made.fanned ? `Fanned out ${made.fanned} ${made.fanned === 1 ? "pad" : "pads"}.` : "No pad needed fanning out.",
+        stuck.length ? `No room for ${stuck.length === 1 ? "pad" : "pads"} ${stuck.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  };
+  return (
+    <>
+      <Button size="dense" variant="secondary" label="Fan out" title="A short track and a via from each pad still to connect" onClick={go} />
+      {said && (
+        <p className="bc-note" role="status">
+          {said}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** Stitching vias (#737): fills the pour with vias to its net's pour on the other side. The sums load when asked. */
 function Stitching({ design, edit, pour }: { design: ElectronicsDesign; edit: EEdit; pour: string }) {
   const [spacing, setSpacing] = useState(5);
@@ -253,6 +287,7 @@ export default function BoardProps({
         <PickGroup design={design} part={part} />
         <SwapPins design={design} edit={edit} part={part} />
         <PadJoins design={design} edit={edit} part={part} />
+        {!readOnly && <FanOut design={design} edit={edit} part={part} />}
       </fieldset>
     );
   }
@@ -317,6 +352,47 @@ export default function BoardProps({
           />
           Join pads with spokes
         </label>
+        <label className="bc-field-label" htmlFor={`${ids}h`}>
+          Fill
+        </label>
+        <select
+          id={`${ids}h`}
+          className="bc-select"
+          value={pour.hatch ? "hatch" : "solid"}
+          onChange={({ target: { value } }) =>
+            change(
+              { hatch: value === "hatch" ? { ...HATCH, width: Math.max(HATCH.width, board.rules.minTrackWidth) } : null },
+              value === "hatch" ? "Hatch the pour" : "Fill the pour solid",
+            )
+          }
+        >
+          <option value="solid">Solid</option>
+          <option value="hatch">Hatched</option>
+        </select>
+        {pour.hatch && (
+          <div className="bc-ec-set-row">
+            <NumberField
+              label="Line width"
+              unit="mm"
+              value={pour.hatch.width}
+              min={0.05}
+              max={10}
+              step={0.05}
+              precision={3}
+              onCommit={(width) => change({ hatch: { ...pour.hatch!, width } }, "Change the hatching")}
+            />
+            <NumberField
+              label="Gap"
+              unit="mm"
+              value={pour.hatch.gap}
+              min={0.1}
+              max={20}
+              step={0.1}
+              precision={3}
+              onCommit={(gap) => change({ hatch: { ...pour.hatch!, gap } }, "Change the hatching")}
+            />
+          </div>
+        )}
         <label className="bc-field-label" htmlFor={`${ids}o`}>
           Where pours overlap
         </label>
@@ -463,6 +539,11 @@ export default function BoardProps({
             />
           )}
         </fieldset>
+        {!readOnly && (
+          <Suspense fallback={null}>
+            <LengthMatch design={design} edit={edit} nets={tracks.map((t) => t.net)} />
+          </Suspense>
+        )}
         {net ? (
           <NetProps design={design} edit={edit} net={net} readOnly={readOnly} />
         ) : (
@@ -735,6 +816,60 @@ export default function BoardProps({
           <option value="copper-bottom">Bottom copper</option>
         </select>
         {text.layer.startsWith("copper") && <p className="bc-note">Copper text is copper on no net. Tracks and pours keep clear of it.</p>}
+      </fieldset>
+    );
+  }
+
+  const note = selected.length === 1 ? board.notes?.find((n) => set.has(n.id)) : undefined;
+  if (note) {
+    const change = (c: Parameters<typeof setNote>[2], label: string) =>
+      edit((d) => setNote(d, note.id, c), label, `ec-note-${note.id}-${Object.keys(c).join()}`);
+    return (
+      <fieldset className="bc-ec-set" disabled={readOnly}>
+        <legend>{note.kind === "dimension" ? "Dimension" : note.kind === "line" ? "Note line" : "Note"}</legend>
+        {note.kind === "text" && (
+          <>
+            <label className="bc-field-label" htmlFor={`${ids}t`}>
+              Text
+            </label>
+            <input
+              id={`${ids}t`}
+              className="bc-text"
+              value={note.text}
+              onChange={(e) => e.target.value && change({ text: e.target.value }, "Change the note")}
+            />
+            <div className="bc-ec-set-row">
+              <NumberField label="Height" value={note.size} min={0.5} max={20} step={0.1} onCommit={(v) => change({ size: v }, "Change the note")} />
+              <NumberField
+                label="Turn"
+                unit="°"
+                value={note.angle ?? 0}
+                step={45}
+                onCommit={(v) => change({ angle: ((v % 360) + 360) % 360 }, "Turn the note")}
+              />
+            </div>
+          </>
+        )}
+        {note.kind === "dimension" && (
+          <>
+            <p className="bc-note">Measures {dimensionText(note)}.</p>
+            <div className="bc-ec-set-row">
+              <NumberField label="Offset" value={note.offset} step={0.5} onCommit={(v) => change({ offset: v }, "Move the dimension")} />
+              <NumberField
+                label="Text height"
+                value={note.size ?? NOTE_SIZE}
+                min={0.5}
+                max={10}
+                step={0.1}
+                onCommit={(v) => change({ size: v }, "Change the dimension")}
+              />
+            </div>
+          </>
+        )}
+        {note.kind === "line" && (
+          <NumberField label="Width" value={note.width ?? NOTE_PEN} min={0.05} max={2} step={0.05} onCommit={(v) => change({ width: v }, "Change the line")} />
+        )}
+        <p className="bc-note">Notes go on the assembly drawing and in a notes file for the board house, never in copper or on the silkscreen.</p>
       </fieldset>
     );
   }

@@ -1,10 +1,13 @@
 import { GRID, addWire, emptyDesign, netlist, placePart, power, pushToBoard, resistor, type CatalogueBody } from "@bettercad/electronics";
 import { BcadError, loadBcad, saveBcad } from "./bcad";
-import { boardSolid } from "@bettercad/electronics/pcb/solid";
+import { boardSolid, drawBodiesWith } from "@bettercad/electronics/pcb/solid";
+import { drawnBody } from "@bettercad/electronics/pcb/bodies";
 import { cataloguePart } from "./catalogue/list";
 import { addBoard, boardBodyId, boardParts, boardStep, onSketch, standoffsUnder } from "./board";
-import { MOUNT_DEFAULTS, addMount, addSketch, build, featureSummary, newDoc, type BoardFeature, type ModelDoc } from "./document";
+import { MOUNT_DEFAULTS, addMount, addSketch, build, featureSummary, newDoc, type BoardFeature, type ModelDoc, type Part } from "./document";
 import { fromPartLocal } from "./extrude";
+
+drawBodiesWith(drawnBody);
 
 const design = () => {
   let d = emptyDesign();
@@ -62,13 +65,16 @@ describe("the Board step", () => {
     });
     expect(board.prism).toMatchObject({ from: 0, to: 1.6, pierced: true });
     expect(board.mass).toBeGreaterThan(5);
-    const r1 = b.parts.find((p) => p.name === "R1")!;
-    expect(r1).toMatchObject({ kind: "box", link: "pcb", reference: true });
+    // Its true body (#752): the tinned ends, then the body between them, each a body of its own colour.
+    const [r1, middle] = b.parts.filter((p) => p.name === "R1") as [Part, Part];
+    expect(r1).toMatchObject({ kind: "solid", link: "pcb", reference: true, finish: "metal", size: { x: 2, y: 1.25 } });
+    expect(r1.blocks).toHaveLength(2);
+    expect(middle).toMatchObject({ id: `${r1.id}.1`, kind: "solid", colour: "#232427" });
     // It stands on the top face, where the layout put it.
     const at = doc().electronics!.board!.placements[0]!;
     expect(r1.position.z).toBeCloseTo(5 + 1.6, 6);
     expect(Math.hypot(r1.position.x - 10 - at.x, r1.position.y - at.y)).toBeLessThan(3);
-    expect(b.links.find((l) => l.id === "pcb")).toMatchObject({ name: "Board", parts: [board.id, r1.id] });
+    expect(b.links.find((l) => l.id === "pcb")).toMatchObject({ name: "Board", parts: [board.id, r1.id, middle.id] });
     expect(b.boards).toEqual([{ id: "pcb", body: board.id, left: 0 }]);
     expect(featureSummary(doc(), doc().features[0]!)).toBe("1.6 mm thick, 1 part, one component");
   });

@@ -547,6 +547,7 @@ button.bc-ec-pill {
   .bc-ec-layers:not(.bc-open) ul,
   .bc-ec-layers:not(.bc-open) .bc-ec-grid,
   .bc-ec-layers:not(.bc-open) .bc-ec-outlines,
+  .bc-ec-layers:not(.bc-open) .bc-ec-pick,
   .bc-ec-layers-title {
     display: none;
   }
@@ -842,6 +843,30 @@ button.bc-ec-pill {
   padding: 0 var(--bc-space-6);
   color: var(--bc-color-muted);
   font-size: var(--bc-type-small-size);
+}
+/* the selection filter (#748): two columns of ticks under the layers */
+.bc-ec-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--bc-space-2) var(--bc-space-4);
+  margin: var(--bc-space-3) 0 0;
+  padding: var(--bc-space-3) var(--bc-space-6) 0;
+  border: 0;
+  border-top: 1px solid var(--bc-color-line);
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+}
+.bc-ec-pick legend {
+  float: left;
+  grid-column: 1 / -1;
+  padding: 0;
+  color: var(--bc-color-ink);
+  font-weight: 600;
+}
+.bc-ec-pick label {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
 }
 .bc-ec-routebar {
   position: absolute;

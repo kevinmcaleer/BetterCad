@@ -88,7 +88,7 @@ export function boardPicture(d: ElectronicsDesign, side: "top" | "bottom", font 
     ctx.fillStyle = PAD;
     for (const p of pads) {
       if (p.pad.kind !== "smd" || p.side !== side) continue;
-      padPath(ctx, v, p.pad, p.at, p.angle);
+      padPath(ctx, v, p.pad, p.at, p.angle, 0, p);
       ctx.fill();
     }
     out = { url: canvas.toDataURL("image/png"), x: box.x, y: box.y, w: box.w, h: box.h };

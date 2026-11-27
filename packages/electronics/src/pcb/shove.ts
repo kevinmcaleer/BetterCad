@@ -1,161 +1,16 @@
 import { boardPads, type BoardPad } from "../board";
 import { q } from "../geom";
-import type { CopperLayer, ElectronicsDesign, Id, P2, Track } from "../model";
-import { clearanceBetween, copperOf, edgeLoops, gap, type Solid } from "./copper";
+import type { CopperLayer, ElectronicsDesign, Id, P2 } from "../model";
+import { copperOf, edgeLoops } from "./copper";
 import { blockers, tidyRun, trackLength } from "./route";
-import { slidePiece, slideTrack } from "./slide";
 
-/**
- * Routing for tighter boards (#646): tracks that push their neighbours aside, wiggles that make a net a set length,
- * and two tracks laid together at one gap.
- */
-
-export interface Run {
-  net: string;
-  layer: CopperLayer;
-  pts: P2[];
-  width: number;
-}
-
-const piecesOf = (r: Pick<Run, "pts" | "width">): Solid[] => r.pts.slice(1).map((b, i) => ({ pts: [r.pts[i]!, b], r: r.width / 2 }));
 const sub = (a: P2, b: P2): P2 => [a[0] - b[0], a[1] - b[1]];
 const dot = (a: P2, b: P2): number => a[0] * b[0] + a[1] * b[1];
 
-/** The point of piece `a`-`b` nearest to `p`. */
-function nearestOn(p: P2, a: P2, b: P2): P2 {
-  const d = sub(b, a);
-  const l = dot(d, d);
-  const t = l < 1e-12 ? 0 : Math.max(0, Math.min(1, dot(sub(p, a), d) / l));
-  return [a[0] + d[0] * t, a[1] + d[1] * t];
-}
-
-/** The nearest two points of two pieces that do not cross: one on each. */
-function nearest(a1: P2, a2: P2, b1: P2, b2: P2): [P2, P2] {
-  const tries: [P2, P2][] = [
-    [a1, nearestOn(a1, b1, b2)],
-    [a2, nearestOn(a2, b1, b2)],
-    [nearestOn(b1, a1, a2), b1],
-    [nearestOn(b2, a1, a2), b2],
-  ];
-  return tries.reduce((best, t) => (Math.hypot(...sub(t[0], t[1])) < Math.hypot(...sub(best[0], best[1])) ? t : best));
-}
-
-/** How many times a push may be passed on: the track you lay pushes one, which pushes the next. */
-const DEPTH = 3;
-/** Slides tried before giving up, over the whole push. */
-const TRIES = 60;
-
 /**
- * Makes room for a new run of track by sliding other nets' tracks sideways (#646). Each piece in the way moves just
- * far enough, parallel to itself, and what it then comes too close to is pushed in turn. Pads, vias, text, keep-outs
- * and the board's edge do not move: if a track would have to go into one, there is no room and the answer is null.
- *
- * The design that comes back has the other tracks moved and every clearance kept; the new run is not laid in it.
+ * Routing for tighter boards (#646): wiggles that make a net a set length, and two tracks laid together at one gap.
+ * Pushing other tracks aside is in `./push`, which loads with the router.
  */
-export function shove(d: ElectronicsDesign, run: Run, pads: BoardPad[] = boardPads(d)): ElectronicsDesign | null {
-  const start = d.board;
-  if (!start || run.pts.length < 2) return null;
-  const loops = edgeLoops(start);
-  let cur = d;
-  let tries = 0;
-
-  /** Slides everything `by` is too close to. False when something cannot move far enough. */
-  const push = (by: Run & { id?: Id }, level: number): boolean => {
-    const mine = piecesOf(by);
-    const pushed = new Set<Id>();
-    for (;;) {
-      const board = cur.board!;
-      let hit: { t: Track; i: number; need: number } | undefined;
-      for (const t of board.tracks) {
-        if (t.layer !== by.layer || t.id === by.id || (t.net && t.net === by.net)) continue;
-        const need = clearanceBetween(board, by.net, t.net);
-        const i = piecesOf(t).findIndex((p) => mine.some((m) => gap(m, p) < need - 1e-6));
-        if (i >= 0) {
-          hit = { t, i, need };
-          break;
-        }
-      }
-      if (!hit) break;
-      if (level > DEPTH || (tries += 1) > TRIES) return false;
-      const { t, i, need } = hit;
-      const a = t.pts[i]!;
-      const b = t.pts[i + 1]!;
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (len < 1e-9) return false;
-      const n: P2 = [-(b[1] - a[1]) / len, (b[0] - a[0]) / len];
-      // Which way is away: from the nearest point of the pushing run to the nearest of this piece.
-      let side = 0;
-      let lateral = 0;
-      let best = Infinity;
-      for (const m of mine) {
-        const [pm, pt] = nearest(m.pts[0]!, m.pts[1]!, a, b);
-        const dist = Math.hypot(pt[0] - pm[0], pt[1] - pm[1]);
-        if (dist < best) {
-          best = dist;
-          lateral = dot(n, sub(pt, pm));
-          side = Math.sign(lateral);
-        }
-      }
-      // Crossing, or end to end on one line: no side to go to.
-      if (!side || best < 1e-6) return false;
-      let off = Math.ceil((need + by.width / 2 + t.width / 2 - Math.abs(lateral)) * 100) / 100 + 0.01;
-      // Only the stretch beside the pushing run moves, with room either end for the 45° pieces that reach across.
-      const u: P2 = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
-      const here: Solid = { pts: [a, b], r: t.width / 2 };
-      const along = mine.filter((m) => gap(m, here) < need - 1e-6).flatMap((m) => m.pts.map((x) => Math.max(0, Math.min(len, dot(u, sub(x, a))))));
-      const room = off + need + by.width / 2 + t.width / 2;
-      const s1 = Math.min(...along) - room;
-      const s2 = Math.max(...along) + room;
-      const on = (s: number): P2 => [q(a[0] + u[0] * s), q(a[1] + u[1] * s)];
-      const split = [...t.pts.slice(0, i + 1), ...(s1 > 0.05 ? [on(s1)] : []), ...(s2 < len - 0.05 ? [on(s2)] : []), ...t.pts.slice(i + 1)];
-      const at = i + (s1 > 0.05 ? 1 : 0);
-      let done = false;
-      for (let k = 0; k < 8 && !done; k += 1) {
-        const slid = slidePiece(split, at, [n[0] * side * off, n[1] * side * off]);
-        if (!slid) return false;
-        // The slid piece is the one lying on the line it was sent to.
-        const target = dot(n, a) + side * off;
-        const piece = piecesOf({ pts: slid.pts, width: t.width }).find((p) => p.pts.every((x) => Math.abs(dot(n, x) - target) < 1e-4));
-        const g = piece ? Math.min(...mine.map((m) => gap(m, piece))) : need;
-        if (g >= need - 1e-6) done = true;
-        else off += need - g + 0.01;
-      }
-      if (!done) return false;
-      const cut = { ...cur, board: { ...board, tracks: board.tracks.map((x) => (x === t ? { ...t, pts: split } : x)) } };
-      const next = slideTrack(cut, t.id, at, [n[0] * side * off, n[1] * side * off]);
-      if (next === cut) return false;
-      cur = next;
-      pushed.add(t.id);
-    }
-    // What moved now pushes what it has come too close to.
-    for (const id of pushed) {
-      const t = cur.board!.tracks.find((x) => x.id === id);
-      if (t && !push(t, level + 1)) return false;
-    }
-    return true;
-  };
-
-  if (!push(run, 1)) return null;
-  const board = cur.board!;
-  if (board === start) return cur;
-  // Every clearance kept: each track and via that moved is measured like one drawn by hand, with the new run there.
-  const temp: Track = { id: "new-run", net: run.net, layer: run.layer, width: run.width, pts: run.pts };
-  const copper = copperOf({ ...cur, board: { ...board, tracks: [...board.tracks, temp] } }, pads);
-  const was = new Map(start.tracks.map((t) => [t.id, t]));
-  for (const t of board.tracks) {
-    if (was.get(t.id) === t) continue;
-    const others = copper.filter((c) => c.id !== t.id);
-    if (blockers(board, others, loops, { net: t.net, layers: [t.layer], pts: t.pts, width: t.width }).length) return null;
-  }
-  const vias = new Map(start.vias.map((v) => [v.id, v]));
-  for (const v of board.vias) {
-    if (vias.get(v.id) === v) continue;
-    const mine = copper.find((c) => c.id === v.id);
-    const others = copper.filter((c) => c.id !== v.id);
-    if (mine && blockers(board, others, loops, { net: v.net, layers: mine.layers, pts: [[v.x, v.y]], width: v.diameter }).length) return null;
-  }
-  return cur;
-}
 
 // ---------------------------------------------------------------- length
 

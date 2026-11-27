@@ -138,3 +138,18 @@ describe("pours as outlines (#728)", () => {
     expect(eui.get().pourOutlines).toBe(true);
   });
 });
+
+describe("the selection filter (#748)", () => {
+  it("ticks on the Layers card say what a click or a drag box picks", async () => {
+    render(<BoardView design={board()} edit={() => {}} />);
+    const pick = screen.getByRole("group", { name: "Pick" });
+    const vias = within(pick).getByRole("checkbox", { name: "Vias" });
+    expect(vias).toBeChecked();
+    await userEvent.click(vias);
+    expect(eui.get().pick.off).toEqual(["vias"]);
+    await userEvent.click(within(pick).getByRole("checkbox", { name: "Locked parts" }));
+    expect(eui.get().pick.skipLocked).toBe(true);
+    await userEvent.click(vias);
+    expect(eui.get().pick).toEqual({ off: [], skipLocked: true });
+  });
+});

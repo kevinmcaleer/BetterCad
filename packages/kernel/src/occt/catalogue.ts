@@ -23,3 +23,18 @@ export function catalogueShape(oc: OC, part: CataloguePart): TopoDS_Shape {
   if (!out) throw new Error(`${part.name} has no model.`);
   return out;
 }
+
+/**
+ * A board part's drawn body (#752) as one shape: its blocks gathered as they stand, not joined. Joining forty pins to a
+ * header's strip takes over a second; gathering them takes a moment, and a body that is only looked at needs no more.
+ */
+export function gatheredShape(oc: OC, blocks: readonly CatalogueShape[]): TopoDS_Shape {
+  if (!blocks.length) throw new Error("A drawn body has no blocks.");
+  if (blocks.length === 1) return block(oc, blocks[0]!);
+  const out = new oc.TopoDS_Compound();
+  const builder = new oc.TopoDS_Builder();
+  builder.MakeCompound(out);
+  for (const s of blocks) builder.Add(out, block(oc, s));
+  builder.delete();
+  return out;
+}

@@ -55,7 +55,9 @@ describe("a part on a board of its own (#628)", () => {
 
   it("builds the body where a board would put it, and finds its foot", () => {
     const def = resistor();
-    const pkg: PackageChoice = { ...def.packages[0]!, model: { source: { kind: "box", size: [1, 0.6, 0.5] }, offset: [0.4, 0.2, 0] } };
+    // A footprint no true body is drawn for (#752), so the part is its simple box.
+    const fp = { ...def.packages[0]!.footprint, name: "Custom" };
+    const pkg: PackageChoice = { ...def.packages[0]!, footprint: fp, model: { source: { kind: "box", size: [1, 0.6, 0.5] }, offset: [0.4, 0.2, 0] } };
     const doc = previewDoc(def.symbol, pkg, () => undefined)!;
     const built = new ModelBuilder(oc).build(doc);
     expect(built.failed).toEqual([]);

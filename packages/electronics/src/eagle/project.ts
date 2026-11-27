@@ -236,6 +236,10 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
           layer: side,
           outline,
           thermal: item.attrs.thermals !== "no",
+          // Eagle's hatching (#747): lines as wide as the polygon's width, its spacing from line to line.
+          ...(item.attrs.pour === "hatch"
+            ? { hatch: { width: numOf(item, "width") || 0.25, gap: Math.max(0.1, r4((numOf(item, "spacing") || 1.27) - (numOf(item, "width") || 0.25))) } }
+            : {}),
           // Eagle fills rank 1 first; here the higher priority fills first.
           ...(rank > 1 ? { priority: 1 - rank } : {}),
         });
@@ -249,8 +253,6 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
       name: "Board",
       why: `It has copper on more than four inside layers. The first four came across; ${inner} ${inner === 1 ? "track or pour on the others was" : "tracks and pours on the others were"} left out`,
     });
-  if (kids(kid(brd, "signals"), "signal").some((s) => kids(s, "polygon").some((p) => p.attrs.pour === "hatch")))
-    notes.push({ name: "Board", why: "Hatched pours came in as solid ones" });
 
   // The parts, each with its package from the board's own libraries.
   const libs = new Map(kids(kid(brd, "libraries"), "library").map((l) => [libKey(l.attrs.name, l.attrs.urn), libraryIn(l, restring)]));
@@ -267,8 +269,6 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
     const turn = rotOf(e.attrs.rot);
     const p = at(pOf(e));
     if (pkg.skipped) dropped.add("drawings in packages on layers that are not kept (stop, cream, restrict and document layers)", pkg.skipped);
-    if (pkg.offset)
-      dropped.add("pads whose copper sits off the middle of the hole: the hole is where it should be, and the copper is centred on it", pkg.offset);
     if (pkg.edge) dropped.add("edge cuts and milling drawn inside packages");
     if (refs.has(name) && !out.has(name)) {
       out.set(name, { fp: pkg.footprint, nets: padNets.get(name) ?? new Map(), value: e.attrs.value ?? "", fitted: e.attrs.populate !== "no" });

@@ -1,4 +1,5 @@
 import { boardPads, outlinePoints } from "../board";
+import { padOutline } from "../padShape";
 import { packageOf, type ElectronicsDesign, type P2 } from "../model";
 import { netlist } from "../nets";
 import { buildOf, layersOf } from "../pcb/stack";
@@ -153,8 +154,10 @@ export function ipc2581(d: ElectronicsDesign, name: string, when = new Date()): 
     const key = id(pkg.footprint.name);
     if (packages.has(key)) continue;
     const pins = pkg.footprint.pads.map((p) => {
-      const shape =
-        p.shape === "circle"
+      const outline = padOutline(p);
+      const shape = outline
+        ? `<Contour>${polygon(outline.map((q): P2 => [q[0] - p.x, q[1] - p.y]))}</Contour>`
+        : p.shape === "circle"
           ? `<Circle diameter="${n(Math.max(p.w, p.h))}"/>`
           : p.shape === "oval"
             ? `<Oval width="${n(p.w)}" height="${n(p.h)}"/>`

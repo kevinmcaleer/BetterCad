@@ -20,6 +20,7 @@ import { sheetScene, type Fill, type Label, type Scene, type Stroke } from "../d
 import { sheetLayout } from "../drawing/layout";
 import { teePoints } from "./drawSchematic";
 import { foldedAway, shownName } from "@bettercad/electronics/groups";
+import { dimensionParts } from "@bettercad/electronics/pcb/notes";
 import { groupOutlines } from "./hit";
 import { sheetBox } from "./SchematicCanvas";
 
@@ -296,9 +297,11 @@ export function assemblyScene(d: ElectronicsDesign, side: Side, page: AssemblyPa
       if (p.pad.kind === "smd" && p.side !== side) continue;
       const a = (p.angle * Math.PI) / 180;
       const [c, n] = [Math.cos(a), Math.sin(a)];
-      const corner = (x: number, y: number): P2 => P([p.at[0] + x * c - y * n, p.at[1] + x * n + y * c]);
+      const mid = p.centre ?? p.at;
+      const corner = (x: number, y: number): P2 => P([mid[0] + x * c - y * n, mid[1] + x * n + y * c]);
       const [w, h] = [p.pad.w / 2, p.pad.h / 2];
-      if (p.pad.shape === "circle") ring(P(p.at), Math.max(w, h) * s, 0.13);
+      if (p.outline) line([...p.outline, p.outline[0]!].map(P), 0.13);
+      else if (p.pad.shape === "circle") ring(P(mid), Math.max(w, h) * s, 0.13);
       else line([corner(-w, -h), corner(w, -h), corner(w, h), corner(-w, h), corner(-w, -h)], 0.13);
     }
     const one = mine.find((p) => p.pad.number === "1" || p.pad.number === "A1");
@@ -313,5 +316,26 @@ export function assemblyScene(d: ElectronicsDesign, side: Side, page: AssemblyPa
     if (!/^#/.test(part.ref))
       labels.push({ layer: "visible", at: P([at.x, at.y]), size: Math.min(3.5, Math.max(1.8, 1 * s)), anchor: "middle", baseline: "central", text: part.ref });
   }
+  // The board's notes (#749), on the first page: dimensions, lines and words for whoever makes it.
+  if ((page.index ?? 1) === 1)
+    for (const n of board.notes ?? []) {
+      const words = (t: { x: number; y: number; text: string; size: number; angle?: number }, anchor: Label["anchor"]) =>
+        labels.push({
+          layer: "dimension",
+          at: P([t.x, t.y]),
+          size: Math.min(5, Math.max(1.8, t.size * s)),
+          anchor,
+          baseline: "alphabetic",
+          text: t.text,
+          ...(t.angle ? { turn: ((flip ? -t.angle : t.angle) * Math.PI) / 180 } : {}),
+        });
+      if (n.kind === "line") line(n.pts.map(P), 0.25, "dimension");
+      else if (n.kind === "text") words(n, "start");
+      else {
+        const parts = dimensionParts(n);
+        for (const l of parts.lines) line(l.map(P), 0.18, "dimension");
+        words(parts.text, "middle");
+      }
+    }
   return { ...scene, strokes, labels, ...(fills.length ? { fills } : {}) };
 }

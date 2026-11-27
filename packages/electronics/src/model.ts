@@ -108,7 +108,7 @@ export interface SymbolDef {
 
 // ---------------------------------------------------------------- footprints
 
-export type PadShape = "circle" | "rect" | "roundrect" | "oval";
+export type PadShape = "circle" | "rect" | "roundrect" | "oval" | "polygon";
 /** `smd`: copper on one side. `thru`: a plated hole with copper both sides. `npth`: a bare hole, no copper. */
 export type PadKind = "smd" | "thru" | "npth";
 
@@ -135,6 +135,13 @@ export interface Pad {
   noPaste?: boolean;
   /** A surface pad on the far side of the board from its part: the other face of an edge connector. */
   back?: boolean;
+  /**
+   * A `polygon` pad's outline (#744), around the copper's middle, in the pad's own turn. `w` and `h` are its box, so
+   * anything that only wants a size still has one.
+   */
+  points?: P2[];
+  /** Where the copper's middle sits from the hole (#744), in the pad's own turn. None: on it. */
+  offset?: P2;
 }
 
 /** Layers of a footprint, named from the part's own side; flipping the part to the bottom flips them. */
@@ -394,6 +401,8 @@ export interface Pour {
   thermal?: boolean;
   /** Higher fills first where pours overlap. */
   priority?: number;
+  /** Filled as a grid of lines instead of solid (#747): each line this wide, with this much bare board between, mm. */
+  hatch?: { width: number; gap: number };
 }
 
 export type BoardLayer = "silk-top" | "silk-bottom" | "copper-top" | "copper-bottom";
@@ -519,7 +528,11 @@ export interface Board {
   tracks: Track[];
   vias: Via[];
   pours: Pour[];
-  texts: { id: Id; layer: BoardLayer; x: number; y: number; text: string; size: number; angle?: number }[];
+  /**
+   * Words on the board. `mirror` reads it the other way from its side's way (mirrored on the bottom, not on the top);
+   * `width` is a letter's width, mm, where it is not its height, as KiCad keeps it (#751).
+   */
+  texts: { id: Id; layer: BoardLayer; x: number; y: number; text: string; size: number; angle?: number; mirror?: boolean; width?: number }[];
   shapes: (Shape & { id: Id; layer: BoardLayer })[];
   /** Pictures on the silkscreen (#642). */
   pictures?: BoardPicture[];
@@ -539,6 +552,25 @@ export interface Board {
   marks?: BoardMark[];
   /** How a net looks on the board (#740), by its name: a colour for its unrouted lines and when it is lit. */
   netLooks?: Record<string, NetLook>;
+  /** Dimensions, lines and text for whoever makes the board (#749): never copper or silkscreen. */
+  notes?: BoardNote[];
+  /** Groups of nets tuned to the same length (#745), each within its tolerance, mm. The board check warns when one drifts. */
+  matched?: LengthGroup[];
+}
+
+/**
+ * A note on the board's drawing layer (#749). A dimension measures from `a` to `b`, its line `offset` mm to the left
+ * of the way from `a` to `b` (right if less than nothing).
+ */
+export type BoardNote =
+  | { id: Id; kind: "text"; x: number; y: number; text: string; size: number; angle?: number }
+  | { id: Id; kind: "line"; pts: P2[]; width?: number }
+  | { id: Id; kind: "dimension"; a: P2; b: P2; offset: number; size?: number };
+
+export interface LengthGroup {
+  id: Id;
+  nets: string[];
+  tolerance: number;
 }
 
 /** Colours a net can be given (#740), each drawn from the theme's own tokens. */

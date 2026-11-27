@@ -408,6 +408,15 @@ export function moveOnBoard(d: ElectronicsDesign, ids: Id[], dx: number, dy: num
     ...(b.pictures ? { pictures: b.pictures.map((p) => (set.has(p.id) ? at(p) : p)) } : {}),
     pours: b.pours.map((o) => (set.has(o.id) ? { ...o, outline: o.outline.map((p) => [q(p[0] + dx), q(p[1] + dy)] as P2) } : o)),
     keepouts: b.keepouts.map((k) => (set.has(k.id) ? { ...k, outline: k.outline.map((p) => [q(p[0] + dx), q(p[1] + dy)] as P2) } : k)),
+    ...(b.notes
+      ? {
+          notes: b.notes.map((n) => {
+            if (!set.has(n.id)) return n;
+            const m = (p: P2): P2 => [q(p[0] + dx), q(p[1] + dy)];
+            return n.kind === "text" ? at(n) : n.kind === "line" ? { ...n, pts: n.pts.map(m) } : { ...n, a: m(n.a), b: m(n.b) };
+          }),
+        }
+      : {}),
   }));
 }
 
@@ -449,7 +458,7 @@ export function flipOnBoard(d: ElectronicsDesign, ids: Id[]): ElectronicsDesign 
   }));
 }
 
-/** Deletes tracks, vias, holes and text. Parts are removed on the schematic, not here. */
+/** Deletes tracks, vias, holes, text and notes. Parts are removed on the schematic, not here. */
 export function removeFromBoard(d: ElectronicsDesign, ids: Id[]): ElectronicsDesign {
   const set = new Set(ids);
   return onBoard(d, (b) => ({
@@ -461,5 +470,6 @@ export function removeFromBoard(d: ElectronicsDesign, ids: Id[]): ElectronicsDes
     texts: b.texts.filter((t) => !set.has(t.id)),
     ...(b.pictures ? { pictures: b.pictures.filter((p) => !set.has(p.id)) } : {}),
     pours: b.pours.filter((p) => !set.has(p.id)),
+    ...(b.notes ? { notes: b.notes.filter((n) => !set.has(n.id)) } : {}),
   }));
 }

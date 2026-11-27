@@ -341,6 +341,8 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     },
     { ...draw("pour", "Pour", "pour", "P", "Fill an area with copper on one net, usually ground"), group: "Add" },
     { ...draw("keepout", "Keep-out", "keepOut", "O", "Mark an area tracks and pours stay out of, or cut a hole in the board"), group: "Add" },
+    { ...draw("dimension", "Dimension", "dimension", undefined, "Measure between two points on the notes, for whoever makes the board"), group: "Notes" },
+    { ...draw("noteLine", "Note line", "line", undefined, "Draw lines on the notes, never in copper or on the silkscreen"), group: "Notes" },
     {
       id: "duplicate",
       group: "Place",
@@ -493,6 +495,8 @@ function commands(design: () => ElectronicsDesign): Command[] {
     ["pour", "Copper pour", "p", "pour", "fill ground plane zone polygon"],
     ["keepout", "Keep-out or cut-out", "o", "keepOut", "restrict area slot hole"],
     ["measure", "Measure", "m", "ruler", "distance ruler dimension gap between"],
+    ["dimension", "Dimension", undefined, "dimension", "notes fabrication drawing measure size"],
+    ["noteLine", "Note line", undefined, "line", "notes fabrication drawing"],
   ];
   const views = [
     ["schematic", "Show the schematic", "1", "schematic"],

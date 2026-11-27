@@ -122,6 +122,16 @@ export function textWidth(text: string, size: number): number {
   return Math.max(0, ...text.split("\n").map((l) => lineWidth(l, size)));
 }
 
+/**
+ * How a board text is drawn (#751): turned by its angle, mirrored as its side reads unless it says otherwise, and its
+ * letters as wide as it says against their height.
+ */
+export const boardTextLook = (t: { layer: string; size: number; angle?: number; mirror?: boolean; width?: number }) => ({
+  angle: t.angle ?? 0,
+  mirror: t.layer.endsWith("bottom") !== !!t.mirror,
+  ...(t.width && t.size > 0 ? { stretch: t.width / t.size } : {}),
+});
+
 /** The pen width that suits text of a size: 15% of a capital's height. */
 export const penFor = (size: number, least = 0): number => Math.max(least, Math.round(size * 150) / 1000);
 
@@ -135,15 +145,16 @@ export function textStrokes(
   text: string,
   size: number,
   at: P2,
-  opts: { angle?: number; align?: "left" | "centre" | "right"; middle?: boolean; mirror?: boolean } = {},
+  opts: { angle?: number; align?: "left" | "centre" | "right"; middle?: boolean; mirror?: boolean; stretch?: number } = {},
 ): P2[][] {
   const k = size / 6;
+  const kx = k * (opts.stretch ?? 1);
   const a = ((opts.angle ?? 0) * Math.PI) / 180;
   const c = Math.cos(a);
   const s = Math.sin(a);
   const out: P2[][] = [];
   text.split("\n").forEach((row, n) => {
-    const width = lineWidth(row, size);
+    const width = lineWidth(row, size) * (opts.stretch ?? 1);
     const x0 = opts.align === "centre" ? -width / 2 : opts.align === "right" ? -width : 0;
     const y0 = (opts.middle ? -size / 2 : 0) - n * size * LINE_GAP;
     let pen = 0;
@@ -152,7 +163,7 @@ export function textStrokes(
       for (const line of g.lines)
         out.push(
           line.map(([gx, gy]): P2 => {
-            let x = x0 + (pen + gx * g.scale) * k;
+            let x = x0 + (pen + gx * g.scale) * kx;
             const y = y0 + gy * g.scale * k;
             if (opts.mirror) x = -x;
             return [Math.round((at[0] + x * c - y * s) * 1e6) / 1e6, Math.round((at[1] + x * s + y * c) * 1e6) / 1e6];

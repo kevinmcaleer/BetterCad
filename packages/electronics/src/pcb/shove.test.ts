@@ -3,7 +3,8 @@ import type { ElectronicsDesign, P2, Track } from "../model";
 import { segmentDistance } from "../geom";
 import { sampleBoard } from "../sample";
 import { checkBoard } from "./drc";
-import { layPair, netLength, offsetRun, pairOf, pairRuns, shove, tuneLength, wiggles } from "./shove";
+import { layPair, netLength, offsetRun, pairOf, pairRuns, tuneLength, wiggles } from "./shove";
+import { shove } from "./push";
 import { roundedOutline, trackLength } from "./route";
 
 const track = (id: string, net: string, pts: P2[], width = 0.25): Track => ({ id, net, layer: "top", width, pts });

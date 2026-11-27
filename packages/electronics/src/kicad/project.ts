@@ -7,6 +7,7 @@ import {
   emptyBoard,
   type Board,
   type BoardMark,
+  type BoardNote,
   type BoardLayer,
   type CopperLayer,
   type ComponentDef,
@@ -27,6 +28,7 @@ import {
 import { Tally, joinRuns, loopArea, loopsOf, matchNets, type Edge } from "../boardIn";
 import { netlist } from "../nets";
 import { nextMarkRef } from "../pcb/marks";
+import { NOTE_PEN } from "../pcb/notes";
 import { layersOf } from "../pcb/stack";
 import { netPins } from "../sync";
 import { footprintIn } from "./footprint";
@@ -120,6 +122,11 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
     return Array.from({ length: Math.abs(to - from) + 1 }, (_, i) => `${m[1]}${from + i * step}`);
   };
 
+  // Global labels' names anywhere in the design. A local label of the same name is another net in KiCad (#751).
+  const globals = new Set<string>();
+  for (const tree of files.values()) for (const item of tree) if (isList(item) && head(item) === "global_label") globals.add(text(item));
+  const apart = new Set<string>();
+
   /** `alias` gives names inside this sheet that are really a net of the sheet above: the wires of a bus on a sheet pin. */
   const walk = (file: string, path: string, name: string, prefix: string, depth: number, alias: Map<string, string>) => {
     const tree = files.get(file);
@@ -194,7 +201,15 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         sheet.noConnects.push({ id: eid("nc"), x: p[0], y: p[1] });
       } else if (kind === "label" || kind === "hierarchical_label") {
         // A bus's own label names its wires; it is not a net.
-        if (!members(text(item))) label(scoped(text(item)), at(child(item, "at")), num(child(item, "at"), 3));
+        if (!members(text(item))) {
+          let named = scoped(text(item));
+          // On the top sheet a local name is bare, so one a global label also has is given KiCad's own name for it.
+          if (named === text(item) && globals.has(named)) {
+            apart.add(named);
+            named = `/${named}`;
+          }
+          label(named, at(child(item, "at")), num(child(item, "at"), 3));
+        }
       } else if (kind === "global_label") {
         if (!members(text(item))) label(text(item), at(child(item, "at")), num(child(item, "at"), 3));
       } else if (kind === "sheet") {
@@ -309,6 +324,11 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
     if (!sheet.notes!.length) delete sheet.notes;
   };
   walk(rootFile, `/${text(child(root, "uuid"))}`, "", "", 0, new Map());
+  for (const n of apart)
+    notes.push({
+      name: "Schematic",
+      why: `A local label and a global label are both called ${plainName(n)}. They stay apart: the local one's net is /${plainName(n)}, as KiCad names it`,
+    });
   for (const [what, n] of dropped.each()) notes.push({ name: "Schematic", why: `Left out: ${n} ${what}` });
   return out;
 }
@@ -343,7 +363,15 @@ function boardFootprint(node: Node[]): {
     const rest = { ...p };
     delete rest.angle;
     // Half a turn leaves a pad as it was.
-    return { ...rest, y: bottom ? r4(-p.y) : p.y, ...(mine % 180 ? { angle: mine } : {}) };
+    // A pad's own outline and copper offset are mirrored with it on the back.
+    const flipped = (q: P2): P2 => [q[0], r4(-q[1])];
+    return {
+      ...rest,
+      y: bottom ? r4(-p.y) : p.y,
+      ...(mine % 180 ? { angle: mine } : {}),
+      ...(bottom && p.points ? { points: p.points.map(flipped) } : {}),
+      ...(bottom && p.offset ? { offset: flipped(p.offset) } : {}),
+    };
   });
   const over = (s: FootprintDef["shapes"][number]): FootprintDef["shapes"][number] => {
     if (!bottom) return s;
@@ -390,6 +418,77 @@ const SIDE_LAYERS: Record<string, BoardLayer> = {
   "F.Cu": "copper-top",
   "B.Cu": "copper-bottom",
 };
+/** KiCad's drawing, comment and fabrication layers, by their names old and new: they come in as notes (#749). */
+const NOTE_LAYERS = new Set(["Dwgs.User", "Cmts.User", "User.Drawings", "User.Comments", "F.Fab", "B.Fab", "F.Fabrication", "B.Fabrication"]);
+
+/** Points round a circle or along an arc, for a note: notes are lines and words. */
+const round = (c: P2, r: number, a0: number, a1: number): P2[] => {
+  const n = Math.max(8, Math.ceil((Math.abs(a1 - a0) / (2 * Math.PI)) * 48));
+  return Array.from({ length: n + 1 }, (_, i): P2 => {
+    const a = a0 + ((a1 - a0) * i) / n;
+    return [r4(c[0] + r * Math.cos(a)), r4(c[1] + r * Math.sin(a))];
+  });
+};
+
+/** A drawing on a notes layer as one of our notes: text as words, everything else as a line through its corners. */
+function noteOf(kind: string, item: Node[], w: number, pt: (n: Node[] | undefined) => P2): BoardNote | null {
+  // The pen notes are drawn with unless they say otherwise.
+  const width = w > 0 && Math.abs(w - NOTE_PEN) > 1e-9 ? { width: w } : {};
+  if (kind === "gr_text") {
+    const size = num(child(child(child(item, "effects"), "font"), "size"), 1, 1);
+    const just = child(child(item, "effects"), "justify") ?? [];
+    const where = child(item, "at");
+    const angle = norm(num(where, 3));
+    const p = pt(where);
+    const wide = textWidth(text(item), size * 0.72);
+    const along = just.some((j) => j === "left") ? 0 : just.some((j) => j === "right") ? -wide : -wide / 2;
+    const up = just.some((j) => j === "bottom") ? 0 : just.some((j) => j === "top") ? -size * 0.72 : (-size * 0.72) / 2;
+    const c = Math.cos((angle * Math.PI) / 180);
+    const s0 = Math.sin((angle * Math.PI) / 180);
+    return {
+      id: eid("nt"),
+      kind: "text",
+      x: r4(p[0] + along * c - up * s0),
+      y: r4(p[1] + along * s0 + up * c),
+      text: text(item),
+      size,
+      ...(angle ? { angle } : {}),
+    };
+  }
+  let pts: P2[] = [];
+  if (kind === "gr_line") pts = [pt(child(item, "start")), pt(child(item, "end"))];
+  else if (kind === "gr_rect") {
+    const [a, c] = [pt(child(item, "start")), pt(child(item, "end"))];
+    pts = [a, [c[0], a[1]], c, [a[0], c[1]], a];
+  } else if (kind === "gr_circle") {
+    const [c, e] = [pt(child(item, "center")), pt(child(item, "end"))];
+    pts = round(c, Math.hypot(e[0] - c[0], e[1] - c[1]), 0, 2 * Math.PI);
+  } else if (kind === "gr_arc" && child(item, "mid")) {
+    const arc = arcFrom3(pt(child(item, "start")), pt(child(item, "mid")), pt(child(item, "end")));
+    if (arc) pts = round([arc.cx, arc.cy], arc.r, (arc.a0 * Math.PI) / 180, ((arc.a1 < arc.a0 ? arc.a1 + 360 : arc.a1) * Math.PI) / 180);
+  } else if (kind === "gr_poly") {
+    const corners = children(child(item, "pts"), "xy").map(pt);
+    if (corners.length > 1) pts = [...corners, corners[0]!];
+  }
+  return pts.length > 1 ? { id: eid("nl"), kind: "line", pts, ...width } : null;
+}
+
+/**
+ * A KiCad dimension as ours (#749): an aligned one as it is, an orthogonal one along its own direction. KiCad's
+ * height stands its line off to the right of the way from its first point to its second; our offset is to the left.
+ */
+function dimensionOf(dim: Node[], pt: (n: Node[] | undefined) => P2): BoardNote | null {
+  const type = text(child(dim, "type")) || "aligned";
+  const pts = children(child(dim, "pts"), "xy").map(pt);
+  if ((type !== "aligned" && type !== "orthogonal") || pts.length < 2) return null;
+  const a = pts[0]!;
+  let b = pts[1]!;
+  if (type === "orthogonal") b = num(child(dim, "orientation")) === 1 ? [a[0], b[1]] : [b[0], a[1]];
+  if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6) return null;
+  const size = num(child(child(child(child(dim, "gr_text"), "effects"), "font"), "size"), 1, 1);
+  return { id: eid("dim"), kind: "dimension", a, b, offset: r4(-num(child(dim, "height"))), ...(size !== 1 ? { size } : {}) };
+}
+
 /** Our layer for one of KiCad's copper layers. Inner layers (#648) come across up to the fourth; `inner` is how many the board keeps. */
 const copperOf = (layer: string, inner = 0): CopperLayer | null => {
   if (layer === "F.Cu") return "top";
@@ -512,8 +611,6 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     const f = boardFootprint(node);
     const p = pt(child(node, "at"));
     if (f.skipped) dropped.add("drawings in footprints on layers that are not kept (paste, mask and user layers)", f.skipped);
-    const off = children(node, "pad").filter((x) => child(child(x, "drill"), "offset")).length;
-    if (off) dropped.add("pads whose copper sits off the middle of the hole: the hole is where it should be, and the copper is centred on it", off);
     if (
       children(node, "fp_line")
         .concat(children(node, "fp_arc"), children(node, "fp_circle"))
@@ -635,6 +732,11 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       ),
     );
     if (!sides.size) dropped.add("zones on inside layers past the fourth");
+    // A hatched zone (#747) keeps its lines and gaps; turned hatching comes in square to the board.
+    const fill = child(z, "fill");
+    const hatched = text(child(fill, "mode")) === "hatch";
+    const hatch = hatched ? { width: num(child(fill, "hatch_thickness"), 1, 0.25), gap: num(child(fill, "hatch_gap"), 1, 1) } : null;
+    if (hatched && num(child(fill, "hatch_orientation")) % 90) dropped.add("hatched zones turned at an angle, which came in square");
     for (const side of sides) {
       const priority = num(child(z, "priority"));
       board.pours.push({
@@ -644,6 +746,7 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
         outline,
         thermal: !pads?.some((x) => x === "yes" || x === "no"),
         ...(priority ? { priority } : {}),
+        ...(hatch ? { hatch } : {}),
       });
     }
   }
@@ -651,31 +754,41 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
   for (const { kind, item } of raw) {
     const name = text(child(item, "layer"));
     if (name === "Edge.Cuts") continue;
-    const layer = SIDE_LAYERS[name];
-    if (!layer) {
-      dropped.add("drawings on layers that are not kept (fabrication, comments and user layers)");
-      continue;
-    }
     const w = num(child(child(item, "stroke"), "width")) || num(child(item, "width"));
     const width = w > 0 ? { width: w } : {};
     const fill = text(child(item, "fill")) === "solid" || text(child(item, "fill")) === "yes" ? { fill: true as const } : {};
+    // Drawings, comments and fabrication layers are the board's notes (#749).
+    if (NOTE_LAYERS.has(name)) {
+      const note = noteOf(kind, item, w, pt);
+      if (note) (board.notes ??= []).push(note);
+      else dropped.add("drawings that could not be read");
+      continue;
+    }
+    const layer = SIDE_LAYERS[name];
+    if (!layer) {
+      dropped.add("drawings on layers that are not kept (user layers)");
+      continue;
+    }
     let shape: Shape | null = null;
     if (kind === "gr_text") {
       const size = num(child(child(child(item, "effects"), "font"), "size"), 1, 1);
+      // KiCad's size is a letter's height then its width; the width is kept where it differs (#751).
+      const across = num(child(child(child(item, "effects"), "font"), "size"), 2, size);
       const just = child(child(item, "effects"), "justify") ?? [];
       const bottom = layer.endsWith("bottom");
+      const mirrored = just.some((j) => j === "mirror");
       const where = child(item, "at");
       const angle = norm(num(where, 3));
       const p = pt(where);
       // KiCad anchors text by its middle unless it says otherwise; ours starts at its left end, on its baseline.
-      const wide = textWidth(text(item), size);
+      const wide = textWidth(text(item), size) * (size > 0 ? across / size : 1);
       const along = just.some((j) => j === "left") ? 0 : just.some((j) => j === "right") ? -wide : -wide / 2;
       // Several lines sit about the anchor as a block; ours hangs below its first line's baseline.
       const below = (text(item).split("\n").length - 1) * size * LINE_GAP;
       const up = just.some((j) => j === "bottom") ? below : just.some((j) => j === "top") ? -size : -size / 2 + below / 2;
       const c = Math.cos((angle * Math.PI) / 180);
       const s0 = Math.sin((angle * Math.PI) / 180);
-      const dx = (bottom ? -1 : 1) * along;
+      const dx = (mirrored ? -1 : 1) * along;
       board.texts.push({
         id: eid("tx"),
         layer,
@@ -684,6 +797,8 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
         text: text(item),
         size,
         ...(angle ? { angle } : {}),
+        ...(mirrored !== bottom ? { mirror: true } : {}),
+        ...(Math.abs(across - size) > 1e-6 ? { width: across } : {}),
       });
       continue;
     }
@@ -704,9 +819,14 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     if (shape) board.shapes.push({ ...shape, id: eid("s"), layer });
     else dropped.add("drawings that could not be read");
   }
-  for (const what of ["dimension", "image", "group", "target"]) {
+  for (const dim of children(tree, "dimension")) {
+    const note = dimensionOf(dim, pt);
+    if (note) (board.notes ??= []).push(note);
+    else dropped.add("dimensions other than straight ones (leaders, radii and centre marks)");
+  }
+  for (const what of ["image", "target"]) {
     const n = children(tree, what).length;
-    if (n && what !== "group") dropped.add(what === "dimension" ? "dimensions" : what === "image" ? "pictures" : "alignment targets", n);
+    if (n) dropped.add(what === "image" ? "pictures" : "alignment targets", n);
   }
   for (const [what, n] of dropped.each()) notes.push({ name: "Board", why: `Left out: ${n} ${what}` });
   return { board, parts, found: { tracks: board.tracks.length, vias: board.vias.length, pours: board.pours.length } };

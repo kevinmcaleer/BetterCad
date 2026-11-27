@@ -4,7 +4,7 @@ import { placeOnBoard, rad } from "../geom";
 import { packageOf, type CheckLevel, type ElectronicsDesign, type Id, type P2 } from "../model";
 import { byRef, netlist, type Netlist } from "../nets";
 import { boardChanges, footprintBox } from "../sync";
-import { LINE_GAP, REF_SIZE, textWidth } from "../fab/font";
+import { LINE_GAP, REF_SIZE, boardTextLook, textWidth } from "../fab/font";
 import { clearanceBetween, edgeGap, edgeLoops, gap, padSolid, type Copper, type Solid } from "./copper";
 import { layerName, layersOf, viaKind, viaLayers } from "./stack";
 import { boardState } from "./state";
@@ -33,7 +33,8 @@ export type BoardRuleId =
   | "pour-empty"
   | "silk-size"
   | "layer-gone"
-  | "via-span";
+  | "via-span"
+  | "length-match";
 
 export interface BoardRule {
   id: BoardRuleId;
@@ -59,6 +60,7 @@ export const BOARD_RULES: BoardRule[] = [
   { id: "dead-net", label: "Copper is left from a net that is gone", level: "warning" },
   { id: "pour-empty", label: "A pour fills nothing", level: "warning" },
   { id: "via-span", label: "A via does not go right through", level: "warning" },
+  { id: "length-match", label: "Nets matched in length have drifted apart", level: "warning" },
   { id: "silk-size", label: "Silkscreen text is too small", level: "warning" },
   { id: "silk-pad", label: "Silkscreen is printed over a pad", level: "warning" },
 ];
@@ -310,6 +312,16 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
         "Pick the track and make it wider.",
         t.pts[0],
       );
+  // A hatched pour's lines are tracks to the board house (#747).
+  for (const p of board.pours)
+    if (p.hatch && p.hatch.width < rules.minTrackWidth - 1e-6)
+      add(
+        "track-width",
+        p.id,
+        `The hatched pour on ${p.net || "no net"} has lines ${mm(p.hatch.width)} wide. The narrowest the rules allow is ${mm(rules.minTrackWidth)}.`,
+        "Pick the pour and make its lines wider.",
+        p.outline[0],
+      );
 
   // Holes: size, the copper round them, and how close they sit.
   const holes: Hole[] = [];
@@ -319,7 +331,8 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
     if (!h) continue;
     holes.push(h);
     if (p.pad.kind === "thru") {
-      const ring = (Math.min(p.pad.w, p.pad.h) - h.drill) / 2;
+      // Copper off the hole's middle (#744) leaves the ring thinner on one side by as much.
+      const ring = (Math.min(p.pad.w, p.pad.h) - h.drill) / 2 - Math.hypot(...(p.pad.offset ?? [0, 0]));
       if (ring < rules.minRing - 1e-6)
         add(
           "ring",
@@ -453,6 +466,26 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
     );
   }
 
+  // Matched lengths (#745): the group's longest and shortest nets more than its tolerance apart.
+  for (const g of board.matched ?? []) {
+    const len = (net: string) =>
+      board.tracks.reduce(
+        (n, t) => (t.net === net ? n + t.pts.slice(1).reduce((m, p, i) => m + Math.hypot(p[0] - t.pts[i]![0], p[1] - t.pts[i]![1]), 0) : n),
+        0,
+      );
+    const lengths = g.nets.map((net) => ({ net, l: len(net) })).sort((a, b) => b.l - a.l);
+    const [long, short] = [lengths[0], lengths.at(-1)];
+    if (!long || !short || long.l - short.l <= g.tolerance + 1e-6) continue;
+    const at = board.tracks.find((t) => t.net === short.net)?.pts[0];
+    add(
+      "length-match",
+      g.id,
+      `${short.net} is ${mm(long.l - short.l)} shorter than ${long.net}. They are matched to within ${mm(g.tolerance)}.`,
+      "Pick a track on one of them and press Match lengths again.",
+      at,
+    );
+  }
+
   const nets = new Set(nl.nets.map((n) => n.name));
   const dead = new Map<string, P2>();
   for (const t of board.tracks) if (t.net && !nets.has(t.net) && !dead.has(t.net)) dead.set(t.net, t.pts[0]!);
@@ -533,9 +566,10 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
       const side = t.layer === "silk-bottom" ? "bottom" : "top";
       const cap = t.size * 0.72;
       const a = rad(t.angle ?? 0);
-      const flip = side === "bottom" ? -1 : 1;
+      const look = boardTextLook(t);
+      const flip = look.mirror ? -1 : 1;
       const corner = (x: number, y: number): P2 => [t.x + flip * x * Math.cos(a) - y * Math.sin(a), t.y + flip * x * Math.sin(a) + y * Math.cos(a)];
-      const w = textWidth(t.text, cap);
+      const w = textWidth(t.text, cap) * (look.stretch ?? 1);
       // Further lines go below the first, as they are drawn and printed (#730).
       const low = -(t.text.split("\n").length - 1) * cap * LINE_GAP;
       const pad = hit([corner(0, low), corner(w, low), corner(w, cap), corner(0, cap)], side);

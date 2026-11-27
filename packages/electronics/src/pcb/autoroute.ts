@@ -7,6 +7,7 @@ import { applyRoutes, blockers, corner45, tidyRun, type Route } from "./route";
 export { applyRoutes, type Route };
 import { layersOf } from "./stack";
 import { boardState } from "./state";
+import { fanOut } from "./fanout";
 
 /**
  * The autorouter (#647): routes the connections still to make, the short ones first, on a fine grid over every
@@ -36,6 +37,8 @@ export interface AutorouteOptions {
   pitch?: number;
   /** What a via costs, as mm of track. */
   viaCost?: number;
+  /** Fan out the surface pads it could not get away from, then try them again (#746). None: yes. */
+  fanout?: boolean;
   onProgress?: (p: RouteProgress) => void;
 }
 
@@ -368,14 +371,17 @@ class Router {
     return true;
   }
 
-  /** The cells near a pad a track can reach from its middle, each with the short run that gets there. */
-  private ways(s: Space, net: string, netId: number, pad: BoardPad, local: Copper[]): Map<number, { pts: P2[]; cost: number }> {
+  /**
+   * The cells near a pad (or a via, a point on every layer) a track can reach from its middle, each with the short run
+   * that gets there.
+   */
+  private ways(s: Space, net: string, netId: number, pad: Pick<BoardPad, "at">, on: Layer[], local: Copper[]): Map<number, { pts: P2[]; cost: number }> {
     const out = new Map<number, { pts: P2[]; cost: number }>();
     const reach = Math.max(3 * this.pitch, 0.4);
     const ci = Math.round((pad.at[0] - this.x0) / this.pitch);
     const cj = Math.round((pad.at[1] - this.y0) / this.pitch);
     const span = Math.ceil(reach / this.pitch);
-    for (const layer of padLayers(pad, this.layers)) {
+    for (const layer of on) {
       const l = this.layers.indexOf(layer);
       if (!this.allowed[l]) continue;
       for (let j = Math.max(0, cj - span); j <= Math.min(this.ny - 1, cj + span); j += 1)
@@ -397,6 +403,38 @@ class Router {
     return out;
   }
 
+  /**
+   * Where a route may leave a pad: from the pad itself, or, when the pad is hemmed in, from the via at the end of its
+   * fan-out (#746).
+   */
+  private from_(s: Space, net: string, netId: number, pad: BoardPad): Map<number, { pts: P2[]; cost: number }> {
+    const own = this.ways(s, net, netId, pad, padLayers(pad, this.layers), this.around(pad.at, 3));
+    if (own.size) return own;
+    const near = (p: P2, q: P2) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-3;
+    for (const t of this.board.tracks) {
+      if (t.net !== net || t.pts.length < 2) continue;
+      const [first, last] = [t.pts[0]!, t.pts[t.pts.length - 1]!];
+      const end = near(first, pad.at) ? last : near(last, pad.at) ? first : null;
+      const via = end && this.board.vias.find((v) => v.net === net && near([v.x, v.y], end));
+      if (!via) continue;
+      const out = this.ways(
+        s,
+        net,
+        netId,
+        { at: [via.x, via.y] },
+        this.layers.filter((_, l) => this.allowed[l]),
+        this.around([via.x, via.y], 3),
+      );
+      if (out.size) return out;
+    }
+    return own;
+  }
+
+  /** Whether a route could leave this pad at all, from the pad or its fan-out's via. */
+  canLeave(pad: BoardPad): boolean {
+    return this.from_(this.space(pad.net), pad.net, this.netId(pad.net), pad).size > 0;
+  }
+
   /** The copper near a point, for measuring the short runs at a pad. */
   private around(at: P2, by: number): Copper[] {
     return this.copper.filter(
@@ -409,8 +447,8 @@ class Router {
     const s = this.space(net);
     const netId = this.netId(net);
     const { n, nx, ny, pitch } = this;
-    const starts = this.ways(s, net, netId, a, this.around(a.at, 3));
-    const ends = this.ways(s, net, netId, b, this.around(b.at, 3));
+    const starts = this.from_(s, net, netId, a);
+    const ends = this.from_(s, net, netId, b);
     if (!starts.size || !ends.size) return null;
     const run = (this.run += 1);
     const { cost, from, dir, mark, shut } = this;
@@ -536,6 +574,24 @@ export function autoroute(d: ElectronicsDesign, opts: AutorouteOptions = {}): Au
   if (!d.board || outlinePoints(d.board.outline).length < 3) return out;
   const tried = new Set<string>();
   let done = 0;
+  // Pads the router cannot get away from, between its grid lines on a fine-pitch chip, are fanned out first: a short
+  // track and a via each (#746), and their connections start from the via.
+  if (opts.fanout !== false && (!opts.layers || opts.layers.length > 1)) {
+    const state = boardState(out.design);
+    const router = new Router(out.design, state.pads, [...state.copper], opts);
+    const ends = wanted(state.pads, state.joined, opts).flatMap((w) => [w.a, w.b]);
+    const stuck = [...new Set(ends)].filter((p) => p.pad.kind === "smd" && (!opts.layers || opts.layers.includes(p.side)) && !router.canLeave(p));
+    if (stuck.length) {
+      const fanned = fanOut(
+        out.design,
+        [...new Set(stuck.map((p) => p.part))],
+        stuck.map((p) => p.at),
+      );
+      out.design = fanned.design;
+      out.routes.push(...fanned.routes);
+      for (const route of fanned.routes) opts.onProgress?.({ done: 0, total: 0, routed: 0, failed: 0, net: route.net, route });
+    }
+  }
   // A track through a pour can cut it in two, leaving a new connection to make: so it looks again, a few times.
   for (let pass = 0; pass < 3; pass += 1) {
     const state = boardState(out.design);

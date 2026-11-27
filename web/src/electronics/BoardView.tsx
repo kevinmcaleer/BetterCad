@@ -4,6 +4,7 @@ import { Icon, cx } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { BoardCanvas } from "./BoardCanvas";
 import { layersFor } from "./drawBoard";
+import { PICK_KINDS } from "./hitBoard";
 import { BOARD_GRIDS, eui } from "./ui";
 import { useEui } from "./useEui";
 
@@ -61,6 +62,29 @@ function LayersCard({ board }: { board: { copperLayers: number } }) {
         <input type="checkbox" checked={ui.pourOutlines} onChange={(e) => eui.set({ pourOutlines: e.target.checked })} />
         Pours as outlines
       </label>
+      <fieldset className="bc-ec-pick" data-tip="What a click or a drag box picks on the board">
+        <legend>Pick</legend>
+        {PICK_KINDS.map(([kind, name]) => (
+          <label key={kind}>
+            <input
+              type="checkbox"
+              checked={!ui.pick.off.includes(kind)}
+              onChange={(e) =>
+                eui.set({ pick: { ...ui.pick, off: e.target.checked ? ui.pick.off.filter((k) => k !== kind) : [...ui.pick.off, kind] }, selected: [] })
+              }
+            />
+            {name}
+          </label>
+        ))}
+        <label>
+          <input
+            type="checkbox"
+            checked={!ui.pick.skipLocked}
+            onChange={(e) => eui.set({ pick: { ...ui.pick, skipLocked: !e.target.checked }, selected: [] })}
+          />
+          Locked parts
+        </label>
+      </fieldset>
     </section>
   );
 }

@@ -1,12 +1,13 @@
 import { arcOf, boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
 import { distToSegment, placeOnBoard, rad, segmentDistance } from "../geom";
-import { packageOf, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Pad, type Shape, type Side } from "../model";
+import { packageOf, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Pad, type Pour, type Shape, type Side } from "../model";
 import { netlist, type Netlist } from "../nets";
 import { copperOf, type Copper, type Solid } from "../pcb/copper";
-import { pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
-import { penFor, textStrokes, REF_SIZE } from "./font";
+import { fillRects, pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
+import { boardTextLook, penFor, textStrokes, REF_SIZE } from "./font";
 import { pictureRects } from "../pcb/picture";
 import { teardrops } from "../pcb/teardrops";
+import { noteStrokes } from "../pcb/notes";
 import { layerName, layersOf, viaLayers, viaOpen } from "../pcb/stack";
 
 /**
@@ -140,6 +141,23 @@ class Writer {
         m += `1,1,${sz(2 * r)},${sz(x * c - y * s)},${sz(x * s + y * c)}*\n`;
       return m;
     });
+  }
+
+  /**
+   * A board pad's copper, or its opening grown by `grow`: a flash at its copper's middle, or for a polygon pad (#744) a
+   * filled outline, grown by drawing round its edge with a pen twice the growth wide, or shrunk toward its middle.
+   */
+  boardPad(p: BoardPad, grow: number, fn?: string) {
+    if (!p.outline) return this.flash(this.pad(p.pad, p.angle, grow, fn), p.centre ?? p.at);
+    let pts = p.outline;
+    if (grow < 0) {
+      const mx = pts.reduce((a, q) => a + q[0], 0) / pts.length;
+      const my = pts.reduce((a, q) => a + q[1], 0) / pts.length;
+      const k = Math.max(0.1, 1 + (2 * grow) / Math.max(0.01, Math.min(p.pad.w, p.pad.h)));
+      pts = pts.map((q): P2 => [mx + (q[0] - mx) * k, my + (q[1] - my) * k]);
+    }
+    this.region(pts);
+    if (grow > 0) this.line(this.circle(2 * grow, fn), [...pts, pts[0]!]);
   }
 
   private use(code: number) {
@@ -324,6 +342,8 @@ function paintPour(w: Writer, shape: PourShape, islands: [number, number, number
   w.region(area);
   w.attr(".N");
   w.polarity(false);
+  // A hatched pour's openings (#747), before the rings and spokes, so spokes still cross them.
+  for (const sq of shape.holes) w.region(sq);
   const edge = shape.board[0];
   if (edge && !sameLoop(edge, area)) clearOutside(w, edge, [...edge, ...area]);
   for (const hole of shape.board.slice(1)) w.region(hole);
@@ -355,35 +375,56 @@ const paintOrder = (board: Board, side: CopperLayer) =>
     .map((x) => x.p);
 
 /**
- * Pours this writer cannot paint truly: two on one side, on different nets, close enough that painting the second
- * would cut copper out of the first round the first's own pads and tracks. Says which, so the order pack can stop.
+ * Pours on a layer that painting another would cut into: two on different nets, close enough that painting the later
+ * one would take copper out of the earlier one round the earlier's own pads and tracks (#750).
  */
-export function pourClashes(
-  d: ElectronicsDesign,
-  pads: BoardPad[] = boardPads(d),
-  copper: Copper[] = copperOf(d, pads),
-): { side: CopperLayer; a: string; b: string }[] {
-  const board = d.board;
-  const out: { side: CopperLayer; a: string; b: string }[] = [];
-  if (!board) return out;
-  for (const side of layersOf(board)) {
-    const order = paintOrder(board, side);
-    order.forEach((later, i) => {
-      const shape = pourShape(d, later, pads, copper);
-      for (const earlier of order.slice(0, i)) {
-        if (earlier.net === later.net) continue;
-        const hit = copper.some(
+function cutPours(d: ElectronicsDesign, side: CopperLayer, pads: BoardPad[], copper: Copper[]): Set<Pour> {
+  const out = new Set<Pour>();
+  const order = paintOrder(d.board!, side);
+  order.forEach((later, i) => {
+    const earlier = order.slice(0, i).filter((e) => e.net !== later.net && !out.has(e));
+    if (!earlier.length) return;
+    const shape = pourShape(d, later, pads, copper);
+    for (const e of earlier)
+      if (
+        copper.some(
           (c) =>
-            c.net === earlier.net &&
+            c.net === e.net &&
             c.layers.includes(side) &&
-            shape.knocks.some((k) => k.pts === c.pts && near(later.outline, k) && reachOf(earlier.outline, k) < k.r + k.reach),
-        );
-        if (hit) out.push({ side, a: earlier.net || "no net", b: later.net || "no net" });
-      }
-    });
-  }
+            shape.knocks.some((k) => k.pts === c.pts && near(later.outline, k) && reachOf(e.outline, k) < k.r + k.reach),
+        )
+      )
+        out.add(e);
+  });
   return out;
 }
+
+/**
+ * A pour written as its finished fill (#750): rectangles of copper only, nothing cleared, so it cannot cut what is
+ * already drawn. The fill's grid is fine for this, and every knock takes out three quarters of a cell more than its
+ * reach, so no corner of a cell comes nearer than the rules allow.
+ */
+function writeFill(w: Writer, d: ElectronicsDesign, pour: Pour, pads: BoardPad[], copper: Copper[]) {
+  const xs = pour.outline.map((p) => p[0]);
+  const ys = pour.outline.map((p) => p[1]);
+  const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+  const step = Math.max(0.05, Math.sqrt(area / FINE_CELLS));
+  const fill = pourFill(d, pour, pads, copper, { step, margin: step * 0.75 });
+  w.comment(`Pour on ${pour.net || "no net"}, as its finished fill`);
+  w.polarity(true);
+  w.attr(".N", field(pour.net));
+  for (const [x, y, wide, tall] of fillRects(fill))
+    w.region([
+      [x, y],
+      [x + wide, y],
+      [x + wide, y + tall],
+      [x, y + tall],
+    ]);
+  w.attr(".N");
+}
+
+/** How many cells a pour written as its fill may have. */
+const FINE_CELLS = 1_000_000;
 
 /** A footprint's or the board's line work, placed and drawn with a round pen. */
 function drawShape(w: Writer, s: Shape, place: (p: P2) => P2, turnBy: number, mirror: boolean, least: number, fn?: string) {
@@ -425,7 +466,10 @@ const round = (d: number): Pick<Pad, "shape" | "w" | "h"> => ({ shape: "circle",
 
 function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads: BoardPad[], copper: Copper[], fn: string): string {
   const w = new Writer(fn);
-  for (const pour of paintOrder(board, side)) paintPour(w, pourShape(d, pour, pads, copper), pourFill(d, pour, pads, copper).islands);
+  // A pour a later one would cut into is written last, as its finished fill, so nothing painted after it cuts it (#750).
+  const cut = cutPours(d, side, pads, copper);
+  for (const pour of paintOrder(board, side)) if (!cut.has(pour)) paintPour(w, pourShape(d, pour, pads, copper), pourFill(d, pour, pads, copper).islands);
+  for (const pour of paintOrder(board, side)) if (cut.has(pour)) writeFill(w, d, pour, pads, copper);
   for (const t of board.tracks) {
     if (t.layer !== side) continue;
     w.attr(".N", field(t.net));
@@ -443,13 +487,13 @@ function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads:
     const cap = t.size * 0.72;
     const code = w.circle(penFor(cap), "NonConductor");
     w.attr(".N");
-    for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: side === "bottom" })) w.line(code, line);
+    for (const line of textStrokes(t.text, cap, [t.x, t.y], boardTextLook(t))) w.line(code, line);
   }
   for (const p of pads) {
     if (p.pad.kind === "npth" || (p.pad.kind === "smd" && p.side !== side)) continue;
     w.attr(".P", `${field(p.ref)},${field(p.pad.number)}`);
     w.attr(".N", field(p.net));
-    w.flash(w.pad(p.pad, p.angle, 0, p.pad.kind === "smd" ? "SMDPad,CuDef" : "ComponentPad"), p.at);
+    w.boardPad(p, 0, p.pad.kind === "smd" ? "SMDPad,CuDef" : "ComponentPad");
   }
   w.attr(".P");
   for (const v of board.vias) {
@@ -472,7 +516,7 @@ function openings(w: Writer, board: Board, side: Side, pads: BoardPad[]) {
     if (p.pad.kind === "smd" && p.side !== side) continue;
     const grow = p.pad.maskMargin ?? margin;
     if (p.pad.kind === "npth") w.flash(w.pad(round(p.pad.drill ?? Math.max(p.pad.w, p.pad.h)), 0, grow), p.at);
-    else w.flash(w.pad(p.pad, p.angle, grow), p.at);
+    else w.boardPad(p, grow);
   }
   for (const h of board.holes) w.flash(w.pad(round(h.pad ?? h.drill), 0, margin), [h.x, h.y]);
   for (const v of board.vias) if (viaOpen(board, v) && viaLayers(board, v).includes(side)) w.flash(w.pad(round(v.diameter), 0, margin), [v.x, v.y]);
@@ -490,7 +534,7 @@ function pasteFile(side: Side, pads: BoardPad[], fn: string): string {
     if (p.pad.kind !== "smd" || p.side !== side || p.pad.noPaste) continue;
     // A pad's own paste gap (#627), never so far in that nothing is left to print.
     const grow = Math.max(p.pad.pasteMargin ?? 0, -(Math.min(p.pad.w, p.pad.h) / 2 - 0.05));
-    w.flash(w.pad(p.pad, p.angle, grow), p.at);
+    w.boardPad(p, grow);
   }
   return w.text();
 }
@@ -520,7 +564,7 @@ function silkFile(d: ElectronicsDesign, board: Board, side: Side, pads: BoardPad
     if (t.layer !== `silk-${side}`) continue;
     const cap = Math.max(t.size * 0.72, 0);
     const code = w.circle(penFor(cap, least));
-    for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror })) w.line(code, line);
+    for (const line of textStrokes(t.text, cap, [t.x, t.y], boardTextLook(t))) w.line(code, line);
   }
   for (const pic of board.pictures ?? []) {
     if (pic.layer !== `silk-${side}`) continue;
@@ -544,6 +588,23 @@ function edgeFile(board: Board, fn: string): string {
   const w = new Writer(fn);
   const pen = w.circle(EDGE_PEN, "Profile");
   for (const loop of [board.outline, ...(board.cutouts ?? [])]) w.outline(pen, loop);
+  return w.text();
+}
+
+/**
+ * The notes file (#749): the board's dimensions, lines and text for whoever makes it, drawn as a pen draws them, with
+ * the board's edge for reference. None when the board has no notes.
+ */
+export function notesFile(board: Board): string | null {
+  if (!board.notes?.length) return null;
+  const w = new Writer("OtherDrawing,Notes");
+  const edge = w.circle(EDGE_PEN);
+  for (const loop of [board.outline, ...(board.cutouts ?? [])]) w.outline(edge, loop);
+  for (const n of board.notes) {
+    const { lines, pen } = noteStrokes(n);
+    const code = w.circle(pen);
+    for (const line of lines) w.line(code, line);
+  }
   return w.text();
 }
 

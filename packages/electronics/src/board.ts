@@ -3,6 +3,7 @@ import { packageOf, padsOfPin, type Board, type ElectronicsDesign, type Id, type
 import { netlist, pinKey, type Netlist } from "./nets";
 import { outlinePoints } from "./outlineGeom";
 import { markPads } from "./pcb/marks";
+import { padOnBoard } from "./padShape";
 
 export { arcOf, area, outlinePoints, pointInPolygon } from "./outlineGeom";
 
@@ -18,6 +19,10 @@ export interface BoardPad {
   angle: number;
   /** The side its copper is on, for a surface pad: its part's, or the other for a pad on the part's back. */
   side: Side;
+  /** Where its copper's middle is, when that is off the hole (#744). None: at `at`. */
+  centre?: P2;
+  /** A polygon pad's outline on the board (#744). */
+  outline?: P2[];
 }
 
 /** Every pad on the board, with its net from the schematic. */
@@ -46,6 +51,7 @@ export function boardPads(d: ElectronicsDesign, nl: Netlist = netlist(d)): Board
         at: placeOnBoard([pad.x, pad.y], at),
         angle: at.rot + flip * (pad.angle ?? 0),
         side: pad.back && pad.kind === "smd" ? (at.side === "top" ? "bottom" : "top") : at.side,
+        ...padOnBoard(pad, at),
       });
     }
   }

@@ -296,7 +296,7 @@ test.describe("on a wide screen", () => {
     await editor.getByLabel("Solder paste").selectOption({ label: "None" });
 
     // A fifth pad, shaped like the last, then turned into a hole with copper round it.
-    await bar.getByRole("button", { name: "Pad" }).click();
+    await bar.getByRole("button", { name: "Pad", exact: true }).click();
     await page.mouse.click(...(await at(0, 0)));
     await expect(drawing).toHaveAccessibleName("Footprint drawing: 5 pads, 5 outlines");
     await expect(editor.getByLabel("Number")).toHaveValue("5");
@@ -310,6 +310,19 @@ test.describe("on a wide screen", () => {
     await expect(drawing).toHaveAccessibleName("Footprint drawing: 4 pads, 5 outlines");
     await editor.getByRole("button", { name: "Redo" }).click();
     await expect(drawing).toHaveAccessibleName("Footprint drawing: 5 pads, 5 outlines");
+
+    // A sixth pad drawn corner by corner (#744), its corners there to type.
+    await bar.getByRole("button", { name: "Pad outline" }).click();
+    for (const [x, y] of [
+      [0, 2],
+      [1, 2],
+      [1, 3],
+    ])
+      await page.mouse.click(...(await at(x!, y!)));
+    await editor.getByRole("button", { name: "Finish the pad" }).click();
+    await expect(drawing).toHaveAccessibleName("Footprint drawing: 6 pads, 5 outlines");
+    await expect(editor.getByLabel("Shape")).toHaveValue("polygon");
+    await expect(editor.getByLabel("Corners, in mm from the pad's middle")).toHaveValue("-0.5 -0.5, 0.5 -0.5, 0.5 0.5");
     await page.keyboard.press("Escape");
     await expect(bar.getByRole("button", { name: "Select" })).toHaveAttribute("aria-pressed", "true");
     await expect(editor).toBeVisible();
@@ -321,9 +334,10 @@ test.describe("on a wide screen", () => {
       const pack = JSON.parse(localStorage.getItem("bettercad.electronics.library") ?? "{}").pack;
       return (Object.values(pack.footprints)[0] as { pads: Record<string, unknown>[] }).pads;
     });
-    expect(pads).toHaveLength(5);
+    expect(pads).toHaveLength(6);
     expect(pads[0]).toMatchObject({ number: "1", maskMargin: 0.1, noPaste: true });
     expect(pads[4]).toMatchObject({ number: "5", kind: "smd" });
+    expect(pads[5]).toMatchObject({ number: "6", shape: "polygon", w: 1, h: 1 });
   });
 
   test("check the rules, copy a circuit, edit the parts in a table and export the schematic", async ({ page }) => {
@@ -1269,6 +1283,23 @@ test.describe("on a wide screen", () => {
     const undo = page.getByRole("banner").getByRole("button", { name: /^Undo/ });
     await undo.click();
     await expect(status).toContainText("Every connection is routed");
+
+    // A dimension on the notes (#749): two points to measure between, then where its line goes. Picked, it says
+    // how long it measures.
+    await tools(page)
+      .getByRole("button", { name: /^Dimension/ })
+      .click();
+    await expect(bar.getByRole("status")).toContainText("Click the first point to measure from");
+    await press(page, 5, 34);
+    await press(page, 15, 34);
+    await expect(bar.getByRole("status")).toContainText("Click where the dimension's line goes");
+    await press(page, 10, 37);
+    await expect(undo).toHaveAccessibleName(/^Undo add a dimension/);
+    await page.keyboard.press("Escape");
+    await press(page, 10, 37);
+    await expect(page.getByRole("group", { name: "Dimension" })).toContainText("Measures 10 mm");
+    await page.keyboard.press("Escape");
+    await undo.click();
 
     // Deleting a part on the board asks first, then takes it off the schematic too. One undo brings both back.
     await press(page, 15, 20);

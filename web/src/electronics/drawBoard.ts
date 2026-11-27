@@ -4,6 +4,7 @@ import {
   packageOf,
   placeOnBoard,
   type Air,
+  type BoardNote,
   type BoardPad,
   type Box,
   type CopperLayer,
@@ -15,13 +16,15 @@ import {
 } from "@bettercad/electronics";
 import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
 import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
-import { REF_SIZE, penFor, textStrokes } from "@bettercad/electronics/fab/font";
+import { copperMiddle, padOutline } from "@bettercad/electronics/padShape";
+import { noteStrokes } from "@bettercad/electronics/pcb/notes";
+import { REF_SIZE, boardTextLook, penFor, textStrokes } from "@bettercad/electronics/fab/font";
 import type { Colours } from "./colours";
 import { drawGroup, rubber } from "./drawSchematic";
 import { toScreen, type View2D } from "./view2d";
 
 /** The layers the Layers card lists. */
-export type LayerId = "top" | "bottom" | `in${number}` | "silk-top" | "silk-bottom" | "courtyard" | "edge" | "holes" | "ratsnest";
+export type LayerId = "top" | "bottom" | `in${number}` | "silk-top" | "silk-bottom" | "courtyard" | "edge" | "holes" | "notes" | "ratsnest";
 export const LAYERS: { id: LayerId; label: string; colour: keyof Colours; copper?: CopperLayer }[] = [
   { id: "top", label: "Top copper", colour: "ec-copper-top", copper: "top" },
   { id: "bottom", label: "Bottom copper", colour: "ec-copper-bottom", copper: "bottom" },
@@ -30,6 +33,7 @@ export const LAYERS: { id: LayerId; label: string; colour: keyof Colours; copper
   { id: "courtyard", label: "Part outlines", colour: "ec-courtyard" },
   { id: "edge", label: "Board edge", colour: "ec-edge" },
   { id: "holes", label: "Holes", colour: "ec-pad" },
+  { id: "notes", label: "Notes", colour: "ec-pcb-ink" },
   { id: "ratsnest", label: "Unrouted lines", colour: "ec-pcb-ink" },
 ];
 
@@ -82,6 +86,8 @@ export interface BoardLook {
   box?: [P2, P2] | null;
   /** The pours as they fill: what to paint and the islands to leave out. */
   pours?: { shape: PourShape; fill: PourFill }[];
+  /** A note being drawn (#749): a dimension or a line, as it would land. */
+  note?: BoardNote[];
   /** An area being drawn, corner by corner. */
   area?: P2[];
   /** Pours drawn as their outlines only, so everything under them shows (#728). */
@@ -129,9 +135,12 @@ export function strokeLines(ctx: CanvasRenderingContext2D, v: View2D, lines: P2[
 }
 
 /** A board text's strokes: its capitals are 0.72 of its size, as the Gerber writer draws them. */
-export function boardTextStrokes(t: { text: string; size: number; x: number; y: number; angle?: number; layer: string }): { lines: P2[][]; pen: number } {
+export function boardTextStrokes(t: { text: string; size: number; x: number; y: number; angle?: number; layer: string; mirror?: boolean; width?: number }): {
+  lines: P2[][];
+  pen: number;
+} {
   const cap = Math.max(0, t.size * 0.72);
-  return { lines: textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: t.layer.endsWith("bottom") }), pen: penFor(cap) };
+  return { lines: textStrokes(t.text, cap, [t.x, t.y], boardTextLook(t)), pen: penFor(cap) };
 }
 
 let scratch: HTMLCanvasElement | null = null;
@@ -193,6 +202,11 @@ function paintPour(
     }
   };
   o.globalCompositeOperation = "destination-out";
+  // A hatched pour's openings (#747), then the rings round its own pads.
+  for (const sq of shape.holes) {
+    path(o, v, sq, true);
+    o.fill();
+  }
   shape.rings.forEach(knock);
   o.globalCompositeOperation = "source-over";
   o.lineCap = "butt";
@@ -225,9 +239,30 @@ function path(ctx: CanvasRenderingContext2D, v: View2D, pts: P2[], close = false
   if (close) ctx.closePath();
 }
 
-/** A pad's shape as a path, centred on `at` and turned. */
-export function padPath(ctx: CanvasRenderingContext2D, v: View2D, pad: BoardPad["pad"], at: P2, angle: number, grow = 0) {
-  const s = toScreen(v, at);
+/**
+ * A pad's shape as a path, centred on `at` and turned. A polygon pad (#744) is drawn from its `outline` on the board;
+ * copper off the hole's middle is centred on `centre`.
+ */
+export function padPath(
+  ctx: CanvasRenderingContext2D,
+  v: View2D,
+  pad: BoardPad["pad"],
+  at: P2,
+  angle: number,
+  grow = 0,
+  where: { centre?: P2; outline?: P2[] } = {},
+) {
+  if (where.outline) {
+    ctx.beginPath();
+    where.outline.forEach((p, i) => {
+      const s = toScreen(v, p);
+      if (i) ctx.lineTo(s[0], s[1]);
+      else ctx.moveTo(s[0], s[1]);
+    });
+    ctx.closePath();
+    return;
+  }
+  const s = toScreen(v, where.centre ?? at);
   const w = (pad.w + grow * 2) * v.scale;
   const h = (pad.h + grow * 2) * v.scale;
   ctx.save();
@@ -362,7 +397,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       if (p.pad.kind !== "smd" || p.side !== layer) continue;
       ctx.globalAlpha = lit(p.net) ? (near ? 1 : 0.6) : 0.3;
       ctx.fillStyle = copper(layer);
-      padPath(ctx, v, p.pad, p.at, p.angle);
+      padPath(ctx, v, p.pad, p.at, p.angle, 0, p);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -375,7 +410,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       ctx.globalAlpha = lit(p.net) ? 1 : 0.3;
       if (p.pad.kind === "thru") {
         ctx.fillStyle = c["ec-pad"];
-        padPath(ctx, v, p.pad, p.at, p.angle);
+        padPath(ctx, v, p.pad, p.at, p.angle, 0, p);
         ctx.fill();
       }
       const s = toScreen(v, p.at);
@@ -477,7 +512,10 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     if (ghost)
       for (const pad of pkg.footprint.pads) {
         ctx.fillStyle = pad.kind === "smd" ? copper(pad.back ? (at.side === "top" ? "bottom" : "top") : at.side) : c["ec-pad"];
-        padPath(ctx, v, pad, place([pad.x, pad.y]), at.rot + (at.side === "bottom" ? -1 : 1) * (pad.angle ?? 0));
+        padPath(ctx, v, pad, place([pad.x, pad.y]), at.rot + (at.side === "bottom" ? -1 : 1) * (pad.angle ?? 0), 0, {
+          centre: place(copperMiddle(pad)),
+          outline: padOutline(pad)?.map(place),
+        });
         ctx.fill();
       }
     if (show(silk) && !("refHidden" in at && at.refHidden) && v.scale >= 3) {
@@ -507,6 +545,23 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
           ? copper(t.layer.endsWith("top") ? "top" : "bottom")
           : c[t.layer.endsWith("top") ? "ec-silk" : "ec-silk-far"];
     strokeLines(ctx, v, lines, t.layer.startsWith("silk") ? Math.max(pen, board.rules?.minSilkWidth ?? 0) : pen);
+  }
+
+  // Notes for whoever makes the board (#749): dimensions, lines and words.
+  if (show("notes"))
+    for (const n of board.notes ?? []) {
+      const { lines, pen } = noteStrokes(n);
+      ctx.strokeStyle = look.selected.has(n.id) || look.hover === n.id ? c["ec-pick"] : c["ec-pcb-ink"];
+      strokeLines(ctx, v, lines, pen);
+    }
+  if (look.note?.length) {
+    ctx.strokeStyle = c["ec-pick"];
+    strokeLines(
+      ctx,
+      v,
+      look.note.flatMap((n) => noteStrokes(n).lines),
+      0.1,
+    );
   }
 
   // Pictures on the silkscreen: the ink, a cell at a time.

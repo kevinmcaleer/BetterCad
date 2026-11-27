@@ -14,10 +14,11 @@ import {
   removeFromBoard,
   rotateOnBoard,
   type Box,
+  type BoardNote,
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
-import { clearanceBetween, copperOf, edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
+import { clearanceBetween, edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
 import { layersOf } from "@bettercad/electronics/pcb/stack";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
@@ -39,7 +40,7 @@ import {
   toggleLock,
   trackLength,
 } from "@bettercad/electronics/pcb/route";
-import { layPair, netLength, pairOf, pairRuns, shove } from "@bettercad/electronics/pcb/shove";
+import { layPair, netLength, pairOf, pairRuns } from "@bettercad/electronics/pcb/shove";
 import { Button, ESC, NumberField, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
@@ -49,6 +50,7 @@ import { getBoardClip, setBoardClip } from "./clip";
 import { boxBoard, handleAt, handlesOf, hitBoard, placementBox } from "./hitBoard";
 import { addAreaCorner, moveAreaCorner, moveTrackCorner, removeAreaCorner } from "@bettercad/electronics/pcb/corners";
 import { measureSnap, measureText } from "./measure";
+import { addDimension, addNoteLine, addNoteText, offsetThrough } from "@bettercad/electronics/pcb/notes";
 import { clearOf } from "./SchematicCanvas";
 import { eui } from "./ui";
 import { useEui } from "./useEui";
@@ -150,6 +152,10 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const [going, setGoing] = useState<string[] | null>(null);
   /** The points picked with Measure (#732): none, the first, or both. */
   const [measured, setMeasured] = useState<P2[]>([]);
+  /** The points of a dimension or a note line being drawn (#749). */
+  const [notePts, setNotePts] = useState<P2[]>([]);
+  /** Where new text goes: the silkscreen or the notes. */
+  const [textOn, setTextOn] = useState<"silk" | "notes">("silk");
   const drag = useRef<{
     ids: string[];
     last: P2;
@@ -182,6 +188,17 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     }
   };
   // What is wrong with where the picked parts sit (#639), found as they move. The check's code loads once, apart.
+  // The router's push and walk (#753) load with the route tool, or with Push on.
+  const [router, setRouter] = useState<typeof import("@bettercad/electronics/pcb/push") | null>(null);
+  const wantRouter = ui.pcbTool === "route" || ui.shove;
+  useEffect(() => {
+    if (!wantRouter || router) return;
+    let live = true;
+    void import("@bettercad/electronics/pcb/push").then((m) => live && setRouter(m));
+    return () => {
+      live = false;
+    };
+  }, [wantRouter, router]);
   const [findClashes, setFindClashes] = useState<typeof import("@bettercad/electronics/drc").placeClashes | null>(null);
   useEffect(() => {
     let live = true;
@@ -230,6 +247,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     if (tool !== "route") setRoute(null);
     setArea([]);
     setMeasured([]);
+    setNotePts([]);
     setSaid("");
   }, [tool]);
 
@@ -265,7 +283,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const shown = (l: Layer) => !hidden.has(l as LayerId);
   /** A part wins over its own pads, so a click on a pad picks the part; copper and holes win over parts. */
   const hitAt = (p: P2) => {
-    const hits = hitBoard(design, pads, p, tol, shown);
+    const hits = hitBoard(design, pads, p, tol, shown, ui.pick, !hidden.has("notes"));
     const small = (h: (typeof hits)[number]) => h.kind !== "pad" && h.kind !== "part" && h.kind !== "area";
     return hits.find(small) ?? hits.find((h) => h.kind === "part") ?? hits.find((h) => h.kind === "pad") ?? hits.find((h) => h.kind === "area");
   };
@@ -298,22 +316,19 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     board && ui.keepClear ? blockers(board, copper, loops, { net, layers, pts, width: w })[0] : undefined;
   const tooClose = (what: string) => setSaid(`Too close to ${what}. Go round it, or turn Keep clear off.`);
 
-  /** With Push on: whether other tracks can move aside to let this run through (#646). */
-  const canPush = (net: string, pts: P2[], w: number): boolean => {
-    if (!ui.shove || !board) return false;
-    const made = shove(design, { net, layer, pts, width: w }, pads);
-    return !!made?.board && made !== design && !blockers(made.board, copperOf(made, pads), loops, { net, layers: [layer], pts, width: w }).length;
-  };
-  /** The way to `to`: bent the way asked for, or the other way if only that one is clear, or pushing through. */
-  const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string }; push?: boolean } => {
+  /**
+   * The way to `to`: bent the way asked for, or the other way if only that one is clear. With Keep clear on and
+   * something in the way, other tracks and vias are pushed aside (with Push on), or the track walks round (#753).
+   */
+  const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string }; pushed?: ElectronicsDesign } => {
     const w = widthOf(r.net);
     const first = corner45(r.last, to, r.diag);
     const stop = inWay(r.net, [layer], first, w);
     if (!stop) return { pts: first };
     const other = corner45(r.last, to, !r.diag);
     if (first.length > 2 && !inWay(r.net, [layer], other, w)) return { pts: other };
-    if (canPush(r.net, first, w)) return { pts: first, push: true };
-    if (first.length > 2 && canPush(r.net, other, w)) return { pts: other, push: true };
+    const got = router?.routeOn(design, { net: r.net, layer, width: w }, r.last, to, { push: ui.shove, walk: true, diag: r.diag }, pads);
+    if (got) return got;
     return { pts: first, stop };
   };
   /** The nearest pad of a net to a point, within reach of a pair. */
@@ -373,14 +388,14 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     }
     const { to, lands } = aim(p, r);
     if (Math.hypot(to[0] - r.last[0], to[1] - r.last[1]) < 1e-6) return r;
-    const { pts, stop, push } = way(r, to);
+    const { pts, stop, pushed } = way(r, to);
     if (stop) {
       tooClose(stop.what);
       return false;
     }
     setSaid("");
     const w = widthOf(r.net);
-    if (push) edit((d) => addTrack(shove(d, { net: r.net, layer, pts, width: w }) ?? d, r.net, layer, pts, w), "Route a track and push others aside");
+    if (pushed) edit(() => addTrack(pushed, r.net, layer, pts, w), "Route a track and push others aside");
     else edit((d) => addTrack(d, r.net, layer, pts, w), "Route a track");
     return lands ? null : { ...r, last: to };
   };
@@ -484,6 +499,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   useEscape(!!route, () => setRoute(null), ESC.drag);
   useEscape(area.length > 0, () => setArea([]), ESC.drag);
   useEscape(measured.length > 0, () => setMeasured([]), ESC.drag);
+  useEscape(notePts.length > 0, () => setNotePts([]), ESC.drag);
   useEscape(!!going, () => setGoing(null), ESC.overlay);
   useEscape(!!ask, () => setAsk(null), ESC.overlay);
   useEscape(tool !== "select", () => eui.set({ pcbTool: "select" }), ESC.tool);
@@ -563,7 +579,19 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         }
         const sl = d.slide;
         // A slide is always worked out from the track as it was picked up, so going back puts it back.
-        if (sl) edit((x) => slideTrack({ ...x, board: sl.board }, sl.id, sl.piece, [s[0] - sl.from[0], s[1] - sl.from[1]]), "Move a piece of track", d.key);
+        // With Push on, the piece pushes the tracks and vias it comes too close to (#753).
+        if (sl)
+          edit(
+            (x) => {
+              const from = { ...x, board: sl.board };
+              const by: P2 = [s[0] - sl.from[0], s[1] - sl.from[1]];
+              if (!(ui.shove && router)) return slideTrack(from, sl.id, sl.piece, by);
+              const next = router.dragPushing(from, sl.id, sl.piece, by);
+              return next === from ? x : next;
+            },
+            "Move a piece of track",
+            d.key,
+          );
         else edit((x) => moveOnBoard(x, d.ids, dx, dy), "Move", d.key);
       }
       return;
@@ -609,6 +637,23 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       // Two clicks measure; a third starts again from there.
       const { at: to } = measureSnap(design, pads, p.world, Math.max(tol, 0.5), grid);
       setMeasured(measured.length === 1 ? [measured[0]!, to] : [to]);
+    } else if (tool === "dimension") {
+      // Two points to measure between, then a third for where its line goes.
+      const to = notePts.length < 2 ? measureSnap(design, pads, p.world, Math.max(tol, 0.5), grid).at : snap(p.world, grid);
+      if (notePts.length < 2) {
+        const last = notePts[0];
+        if (!last || Math.hypot(last[0] - to[0], last[1] - to[1]) > 1e-6) setNotePts([...notePts, to]);
+        return;
+      }
+      const [a, b] = notePts as [P2, P2];
+      edit((d) => addDimension(d, a, b, offsetThrough(a, b, to)).design, "Add a dimension");
+      setNotePts([]);
+    } else if (tool === "noteLine") {
+      // Each click lays a line from the last; Esc stops.
+      const to = snap(p.world, grid);
+      const last = notePts[0];
+      if (last && Math.hypot(last[0] - to[0], last[1] - to[1]) > 1e-6) edit((d) => addNoteLine(d, [last, to]).design, "Add a line");
+      setNotePts([to]);
     } else if (tool === "hole") {
       const to = snap(p.world, grid);
       edit((d) => addHole(d, to[0], to[1], 3.2), "Add a hole");
@@ -641,7 +686,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       return;
     }
     if (box) {
-      if (moved) eui.set({ selected: boxBoard(design, box[0], p.world), net: null });
+      if (moved) eui.set({ selected: boxBoard(design, box[0], p.world, ui.pick), net: null });
       else if (!p.shift) eui.set({ selected: [], net: null, spot: null });
       setBox(null);
     }
@@ -663,7 +708,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     }
     const { pts, stop } = way(route, aim(at, route).to);
     return { track: { pts, width: widthOf(route.net), layer, blocked: !!stop } };
-  }, [route, at, board, copper, layer, width, ui.keepClear, ui.shove, grid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [route, at, board, copper, layer, width, ui.keepClear, ui.shove, grid, router]); // eslint-disable-line react-hooks/exhaustive-deps
   /** How long a net is, with the piece on the pointer counted, against the target if there is one. */
   const lengthOf = (net: string, more: P2[] = []) => {
     const n = mm(netLength(design, net) + trackLength(more));
@@ -677,6 +722,15 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const marks = useMemo(() => (ui.spot?.sheet === "board" ? [{ at: ui.spot.at }] : undefined), [ui.spot]);
 
   const drawing = useMemo(() => (area.length ? (at ? [...area, snap(at, grid)] : [...area, area[area.length - 1]!]) : undefined), [area, at, grid]);
+  // The dimension or line being drawn, as it would land.
+  const noteGhost = useMemo((): BoardNote[] | undefined => {
+    if (!at || !notePts.length) return undefined;
+    if (tool === "noteLine") return [{ id: "", kind: "line", pts: [notePts[0]!, snap(at, grid)] }];
+    if (tool !== "dimension") return undefined;
+    if (notePts.length === 1) return [{ id: "", kind: "dimension", a: notePts[0]!, b: measureSnap(design, pads, at, Math.max(tol, 0.5), grid).at, offset: 0 }];
+    const [a, b] = notePts as [P2, P2];
+    return [{ id: "", kind: "dimension", a, b, offset: offsetThrough(a, b, snap(at, grid)) }];
+  }, [at, notePts, tool, grid, design, pads, tol]);
   // The first point and the pointer while picking the second, then the two points picked.
   const measuring = useMemo(
     () => (measured.length === 1 && at ? [measured[0]!, measureSnap(design, pads, at, Math.max(tol, 0.5), grid).at] : measured),
@@ -711,15 +765,25 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
                 ? "Click a track or a pad to put a test point on its net."
                 : tool === "text"
                   ? "Click where the text starts."
-                  : tool === "pour" || tool === "keepout"
-                    ? area.length
-                      ? "Click the next corner. Click the first corner again, or Done, to close it."
-                      : tool === "pour"
-                        ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
-                        : cut
-                          ? "Click the corners of the hole to cut through the board."
-                          : "Click the corners of the area tracks and pours must stay out of."
-                    : "";
+                  : tool === "dimension"
+                    ? notePts.length === 2
+                      ? "Click where the dimension's line goes."
+                      : notePts.length === 1
+                        ? "Click the second point."
+                        : "Click the first point to measure from. Pads, holes, track ends and the board's edge snap."
+                    : tool === "noteLine"
+                      ? notePts.length
+                        ? "Click the line's next point. Esc stops."
+                        : "Click where the line starts. Notes are for whoever makes the board, never copper or silkscreen."
+                      : tool === "pour" || tool === "keepout"
+                        ? area.length
+                          ? "Click the next corner. Click the first corner again, or Done, to close it."
+                          : tool === "pour"
+                            ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
+                            : cut
+                              ? "Click the corners of the hole to cut through the board."
+                              : "Click the corners of the area tracks and pours must stay out of."
+                        : "";
   return (
     <div ref={host} className="bc-ec-host">
       <div className="bc-ec-clear" aria-hidden="true" />
@@ -769,6 +833,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             clashing,
             pours,
             area: drawing,
+            note: noteGhost,
             pourOutlines: ui.pourOutlines,
             measure: measuring,
             groups: groupLines,
@@ -936,19 +1001,24 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           onSubmit={(e) => {
             e.preventDefault();
             const side = layer === "bottom" ? "silk-bottom" : "silk-top";
-            edit((d) => addText(d, ask.at[0], ask.at[1], text, side), "Add text");
+            if (textOn === "notes") edit((d) => addNoteText(d, ask.at[0], ask.at[1], text).design, "Add a note");
+            else edit((d) => addText(d, ask.at[0], ask.at[1], text, side), "Add text");
             setAsk(null);
           }}
         >
           <input
             className="bc-text"
-            aria-label="Text for the silkscreen"
+            aria-label={textOn === "notes" ? "Text for the notes" : "Text for the silkscreen"}
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
-            onBlur={() => setAsk(null)}
+            onBlur={(e) => !e.currentTarget.form?.contains(e.relatedTarget) && setAsk(null)}
             placeholder="Text"
           />
+          <select className="bc-select" aria-label="Write on" value={textOn} onChange={(e) => setTextOn(e.target.value as "silk" | "notes")}>
+            <option value="silk">Silkscreen</option>
+            <option value="notes">Notes</option>
+          </select>
         </form>
       )}
     </div>
