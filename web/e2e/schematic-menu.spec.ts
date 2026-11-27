@@ -45,7 +45,7 @@ test.describe("schematic right-click", () => {
     await expect(menu.getByRole("menuitem", { name: /Group these/ })).toBeVisible();
     if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/menu.png` });
     await menu.getByRole("menuitem", { name: /Group these/ }).click();
-    await expect(page.getByRole("textbox", { name: "Group name" })).toBeVisible();
+    await expect(page.getByPlaceholder("Group name")).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(tools(page).getByRole("button", { name: /^Group/ })).toBeVisible();
   });
