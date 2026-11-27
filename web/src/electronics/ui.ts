@@ -7,6 +7,7 @@ export interface PlacingBlock {
   place: (d: ElectronicsDesign, sheet: string, at: P2) => { design: ElectronicsDesign; ids: string[] };
 }
 import type { LayerId } from "./drawBoard";
+import type { PickFilter } from "./hitBoard";
 
 /** Which electronics view covers the 3D view. 3D is the model itself, so it is "no electronics view". */
 export type EView = "schematic" | "pcb";
@@ -53,6 +54,8 @@ export interface EUi {
   routed: number | null;
   /** Pours drawn as outlines only, so what is under them shows (#728). */
   pourOutlines: boolean;
+  /** What a click or a drag box may pick on the board (#748). */
+  pick: PickFilter;
   /** A schematic group gone into with a double-click: its things are picked one by one (#766). */
   inGroup: string | null;
 }
@@ -83,6 +86,7 @@ const start = (): EUi => ({
   airs: null,
   routed: null,
   pourOutlines: false,
+  pick: { off: [], skipLocked: false },
   inGroup: null,
 });
 

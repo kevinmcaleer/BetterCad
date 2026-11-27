@@ -265,7 +265,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const shown = (l: Layer) => !hidden.has(l as LayerId);
   /** A part wins over its own pads, so a click on a pad picks the part; copper and holes win over parts. */
   const hitAt = (p: P2) => {
-    const hits = hitBoard(design, pads, p, tol, shown);
+    const hits = hitBoard(design, pads, p, tol, shown, ui.pick);
     const small = (h: (typeof hits)[number]) => h.kind !== "pad" && h.kind !== "part" && h.kind !== "area";
     return hits.find(small) ?? hits.find((h) => h.kind === "part") ?? hits.find((h) => h.kind === "pad") ?? hits.find((h) => h.kind === "area");
   };
@@ -641,7 +641,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       return;
     }
     if (box) {
-      if (moved) eui.set({ selected: boxBoard(design, box[0], p.world), net: null });
+      if (moved) eui.set({ selected: boxBoard(design, box[0], p.world, ui.pick), net: null });
       else if (!p.shift) eui.set({ selected: [], net: null, spot: null });
       setBox(null);
     }

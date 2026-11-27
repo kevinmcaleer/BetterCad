@@ -36,6 +36,45 @@ export interface BoardHit {
   segment?: number;
 }
 
+/** What the selection filter sorts the board's things into (#748), with the names the Layers card shows. */
+export const PICK_KINDS = [
+  ["parts", "Parts"],
+  ["tracks", "Tracks"],
+  ["vias", "Vias"],
+  ["pours", "Pours"],
+  ["text", "Text"],
+  ["holes", "Holes"],
+] as const;
+export type PickKind = (typeof PICK_KINDS)[number][0];
+
+/** Which things a click or a drag box may pick: the kinds left out, and whether locked parts are left out too. */
+export interface PickFilter {
+  off: PickKind[];
+  skipLocked: boolean;
+}
+
+/** The filter's kind for a hit: pads go with their parts, pictures with text, marks with holes, keep-outs with pours. */
+export const pickKindOf = (kind: BoardHit["kind"]): PickKind =>
+  kind === "part" || kind === "pad"
+    ? "parts"
+    : kind === "track"
+      ? "tracks"
+      : kind === "via"
+        ? "vias"
+        : kind === "area"
+          ? "pours"
+          : kind === "text" || kind === "picture"
+            ? "text"
+            : "holes";
+
+/** Whether the filter lets a thing be picked. */
+export function pickable(board: Board, f: PickFilter | undefined, kind: BoardHit["kind"], id: string): boolean {
+  if (!f) return true;
+  if (f.off.includes(pickKindOf(kind))) return false;
+  if (f.skipLocked && (kind === "part" || kind === "pad")) return !board.placements.find((p) => p.part === id)?.locked;
+  return true;
+}
+
 /** A placed footprint's box on the board. */
 export function placementBox(d: ElectronicsDesign, at: Board["placements"][number]): Box | null {
   const part = d.parts.find((p) => p.id === at.part);
@@ -63,7 +102,14 @@ export function boardAreas(board: Board): { id: string; kind: "pour" | "keepout"
 }
 
 /** Everything under a point on the board, smallest things first so a track on a part can still be picked. */
-export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: number, layerShown: (l: CopperLayer) => boolean = () => true): BoardHit[] {
+export function hitBoard(
+  d: ElectronicsDesign,
+  pads: BoardPad[],
+  p: P2,
+  tol: number,
+  layerShown: (l: CopperLayer) => boolean = () => true,
+  filter?: PickFilter,
+): BoardHit[] {
   const board = d.board;
   if (!board) return [];
   const out: BoardHit[] = [];
@@ -96,24 +142,32 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
   // Areas are picked by their edge, so what is inside them can still be reached.
   for (const a of boardAreas(board))
     if (a.outline.some((q, i) => distToSegment(p, q, a.outline[(i + 1) % a.outline.length]!) <= tol)) out.push({ kind: "area", id: a.id, net: a.net });
-  return out;
+  return filter ? out.filter((h) => pickable(board, filter, h.kind, h.id)) : out;
 }
 
-/** Ids of the parts, tracks, vias, holes and marks a rubber-band box touches. Parts come back by part id. */
-export function boxBoard(d: ElectronicsDesign, a: P2, b: P2): string[] {
+/**
+ * Ids of what a rubber-band box takes: parts it touches, and tracks, vias, holes, marks, text, pictures, pours and
+ * keep-outs wholly inside it. Parts come back by part id. `filter` leaves out what the selection filter does (#748).
+ */
+export function boxBoard(d: ElectronicsDesign, a: P2, b: P2, filter?: PickFilter): string[] {
   const board = d.board;
   if (!board) return [];
   const box: Box = { x1: Math.min(a[0], b[0]), y1: Math.min(a[1], b[1]), x2: Math.max(a[0], b[0]), y2: Math.max(a[1], b[1]) };
-  const out: string[] = [];
+  const within = (o: Box) => o.x1 >= box.x1 && o.y1 >= box.y1 && o.x2 <= box.x2 && o.y2 <= box.y2;
+  const out: [BoardHit["kind"], string][] = [];
   for (const at of board.placements) {
     const pb = placementBox(d, at);
-    if (pb && boxesTouch(pb, box)) out.push(at.part);
+    if (pb && boxesTouch(pb, box)) out.push(["part", at.part]);
   }
-  for (const t of board.tracks) if (t.pts.every((q) => inBox(q, box))) out.push(t.id);
-  for (const v of board.vias) if (inBox([v.x, v.y], box)) out.push(v.id);
-  for (const h of board.holes) if (inBox([h.x, h.y], box)) out.push(h.id);
-  for (const m of board.marks ?? []) if (inBox([m.x, m.y], box)) out.push(m.id);
-  return out;
+  for (const t of board.tracks) if (t.pts.every((q) => inBox(q, box))) out.push(["track", t.id]);
+  for (const v of board.vias) if (inBox([v.x, v.y], box)) out.push(["via", v.id]);
+  for (const h of board.holes) if (inBox([h.x, h.y], box)) out.push(["hole", h.id]);
+  for (const m of board.marks ?? []) if (inBox([m.x, m.y], box)) out.push(["mark", m.id]);
+  for (const t of board.texts) if (within(textBox(t))) out.push(["text", t.id]);
+  for (const pic of board.pictures ?? [])
+    if (within({ x1: pic.x, y1: pic.y, x2: pic.x + pic.w, y2: pic.y + (pic.w / pic.cols) * pic.rows })) out.push(["picture", pic.id]);
+  for (const ar of boardAreas(board)) if (ar.kind !== "cutout" && ar.outline.length && ar.outline.every((q) => inBox(q, box))) out.push(["area", ar.id]);
+  return out.filter(([kind, id]) => pickable(board, filter, kind, id)).map(([, id]) => id);
 }
 
 /**

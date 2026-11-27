@@ -299,6 +299,12 @@ Pieces laid one after another become one track. There is no push and shove (#646
 card. Lock (K) pins parts down; with several picked, the card lines them up or spaces them evenly. A part picked on
 the schematic stays picked on the board.
 
+**Selection filter** (#748). Pick, on the Layers card, says what a click or a drag box may take: parts (and their
+pads), tracks, vias, pours (and keep-outs), text (and pictures) and holes (and fiducials and test points), and
+whether locked parts count. `hitBoard` and `boxBoard` in `web/src/electronics/hitBoard.ts` take the filter, so a
+click on something left out reaches what is under it. Routing still starts from any copper. A drag box takes the
+parts it touches and anything else wholly inside it.
+
 **Holes and text.** Hole (H) adds an M3 mounting hole; the card changes the screw size, the drill and whether it has
 a copper ring. Text (T) writes on the silkscreen of the side being worked on.
 
