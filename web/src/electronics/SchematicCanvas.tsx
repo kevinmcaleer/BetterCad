@@ -3,7 +3,12 @@ import {
   GRID,
   addJunction,
   addLabel,
+  addBus,
+  addBusEntry,
   addNote,
+  busAt,
+  freeMembers,
+  renameBus,
   addNoConnect,
   addWires,
   clipOrigin,
@@ -71,6 +76,7 @@ export function sheetBox(d: ElectronicsDesign, sheet: Sheet, only?: Set<string>)
   }
   for (const w of sheet.wires) if (!only || only.has(w.id)) grow(grow(b, w.a), w.b);
   for (const l of sheet.labels) if (!only || only.has(l.id)) grow(b, [l.x, l.y], 2);
+  for (const bus of sheet.buses ?? []) if (!only || only.has(bus.id)) for (const p of bus.pts) grow(b, p, 2);
   for (const o of groupOutlines(d, sheet))
     if (!only || sheet.groups?.find((g) => g.id === o.id)?.members.some((m) => only.has(m))) grow(grow(b, [o.box.x1, o.box.y1]), [o.box.x2, o.box.y2 + 2]);
   for (const n of sheet.notes ?? [])
@@ -90,6 +96,10 @@ export interface LabelAsk {
   name?: string;
   note?: boolean;
   group?: boolean;
+  /** A bus (#756): the points of a new one to name, or with `id` the bus to rename. */
+  bus?: P2[] | true;
+  /** A bus to take a wire off, at `at`: the name is the net the wire gets. */
+  entry?: string;
 }
 
 /** The note a line, box or circle tool makes from its first click to its second (#733). Null when it would be nothing. */
@@ -129,6 +139,9 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   const [box, setBox] = useState<[P2, P2] | null>(null);
   /** The wire being drawn: the corner it continues from. */
   const [from, setFrom] = useState<P2 | null>(null);
+  /** The bus being drawn (#756): its corners so far. */
+  const [busRun, setBusRun] = useState<P2[] | null>(null);
+  useEffect(() => setBusRun(null), [ui.schTool]);
   /** The first click of a line, box or circle note. */
   const [noteFrom, setNoteFrom] = useState<P2 | null>(null);
   useEffect(() => setNoteFrom(null), [ui.schTool]);
@@ -295,6 +308,8 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
             ...sheet.wires.map((w) => w.id),
             ...sheet.labels.map((l) => l.id),
             ...(sheet.notes ?? []).map((n) => n.id),
+            ...(sheet.buses ?? []).map((b) => b.id),
+            ...(sheet.busEntries ?? []).map((e) => e.id),
           ],
         }),
     };
@@ -306,9 +321,16 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   // Esc backs out one layer: the wire corner, then the tool, then the selection.
   useEscape(tool === "wire" && !!from, () => setFrom(null), ESC.drag);
   useEscape(!!noteFrom, () => setNoteFrom(null), ESC.drag);
+  useEscape(!!busRun, () => finishBus(busRun), ESC.drag);
   useEscape(tool !== "select", () => eui.set({ schTool: "select", placing: null, placingBlock: null }), ESC.tool);
   useEscape(tool === "select" && ui.selected.length > 0, () => eui.set({ selected: [] }), ESC.selection);
   useEscape(tool === "select" && !!inside && !ui.selected.length, () => eui.set({ inGroup: null }), ESC.selection);
+
+  /** Ends the bus being drawn and asks its name. */
+  const finishBus = (run: P2[] | null) => {
+    setBusRun(null);
+    if (run && run.length > 1) onAskLabel({ at: run[0]!, screen: toScreen(view, run[0]!), bus: run, name: "" });
+  };
 
   const tol = 6 / view.scale;
   const elbow = (a: P2, b: P2): P2[] => (a[0] === b[0] || a[1] === b[1] ? [a, b] : [a, [b[0], a[1]], b]);
@@ -398,6 +420,15 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       setFrom(joinAt(at) ? null : at);
       return;
     }
+    if (tool === "bus") {
+      // On a bus, and not drawing one: take a wire off it, named for the next of its nets not yet on the sheet.
+      const on = !busRun && busAt(sheet, p.world, tol);
+      if (on) return onAskLabel({ at: p.world, screen: toScreen(view, p.world), entry: on.id, name: freeMembers(sheet, on.id)[0] ?? "" });
+      if (!busRun) return setBusRun([at]);
+      const last = busRun[busRun.length - 1]!;
+      if (key(last[0], last[1]) === key(at[0], at[1])) return finishBus(busRun);
+      return setBusRun([...busRun, ...elbow(last, at).slice(1)]);
+    }
     if (tool === "label") return onAskLabel({ at, screen: toScreen(view, at) });
     if (tool === "text") return onAskLabel({ at, screen: toScreen(view, at), note: true });
     if (tool === "line" || tool === "rect" || tool === "circle") {
@@ -431,12 +462,16 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       const pts = elbow(from, cursor);
       return { wires: pts.slice(1).map((b, i) => [pts[i]!, b] as [P2, P2]) };
     }
+    if (tool === "bus" && busRun) {
+      const pts = [...busRun, ...elbow(busRun[busRun.length - 1]!, cursor).slice(1)];
+      return { wires: pts.slice(1).map((b, i) => [pts[i]!, b] as [P2, P2]) };
+    }
     if ((tool === "line" || tool === "rect" || tool === "circle") && noteFrom) {
       const made = noteShape(tool, noteFrom, cursor);
       return made ? { notes: [made] } : undefined;
     }
     return undefined;
-  }, [cursor, tool, ui.placing, ui.placingBlock, from, turnBy, flipped, noteFrom]);
+  }, [cursor, tool, ui.placing, ui.placingBlock, from, turnBy, flipped, noteFrom, busRun]);
 
   /** Hovering a wire or a label lights its whole net across the sheet. */
   const lit = useMemo(() => {
@@ -487,6 +522,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         onDouble={(p) => {
           if (readOnly) return;
           if (tool === "wire") return setFrom(null);
+          if (tool === "bus") return finishBus(busRun);
           const hit = hitSheet(design, sheet, p.world, tol).filter((h) => !hidden.has(h.id))[0];
           // Double-click a pin's end: the inspector opens the name of the net it is on.
           const pin =
@@ -510,6 +546,8 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
           if (g && g.id !== inside) return eui.set({ inGroup: g.id, selected: [hit.id] });
           const label = hit?.kind === "label" ? sheet.labels.find((l) => l.id === hit.id) : undefined;
           if (label) onAskLabel({ at: [label.x, label.y], screen: toScreen(view, [label.x, label.y]), id: label.id, name: label.name });
+          const bus = hit?.kind === "bus" ? sheet.buses?.find((b) => b.id === hit.id) : undefined;
+          if (bus) onAskLabel({ at: bus.pts[0]!, screen: toScreen(view, bus.pts[0]!), id: bus.id, name: bus.name, bus: true });
           const note = hit?.kind === "note" ? sheet.notes?.find((n) => n.id === hit.id) : undefined;
           if (note?.kind === "text") onAskLabel({ at: [note.x, note.y], screen: toScreen(view, [note.x, note.y]), id: note.id, name: note.text, note: true });
         }}
@@ -519,8 +557,20 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
 }
 
 /** Applies the name field: a new label, or a new name for a label or a group; or a text note's words (#733). */
-export function commitLabel(edit: EEdit, sheet: string, ask: { at: P2; id?: string; note?: boolean; group?: boolean }, name: string): void {
+export function commitLabel(
+  edit: EEdit,
+  sheet: string,
+  ask: { at: P2; id?: string; note?: boolean; group?: boolean; bus?: P2[] | true; entry?: string },
+  name: string,
+): void {
   const text = name.trim();
+  if (ask.bus || ask.entry) {
+    if (!text) return;
+    if (ask.entry) return edit((d) => addBusEntry(d, sheet, ask.entry!, ask.at, text), "Take a wire off a bus");
+    if (ask.id) return edit((d) => renameBus(d, sheet, ask.id!, text), "Rename bus");
+    if (ask.bus !== true) edit((d) => addBus(d, sheet, ask.bus as P2[], text).design, "Bus");
+    return;
+  }
   if (ask.note) {
     if (ask.id) edit((d) => setNoteText(d, sheet, ask.id!, text), text ? "Change a note" : "Delete a note");
     else if (text) edit((d) => addNote(d, sheet, { kind: "text", x: ask.at[0], y: ask.at[1], text, size: 1.27, align: "left" }).design, "Add a note");

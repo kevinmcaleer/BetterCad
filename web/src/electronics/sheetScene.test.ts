@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BASICS, addLabel, addNoConnect, addNote, addWire, emptyDesign, placePart } from "@bettercad/electronics";
+import { BASICS, addBus, addBusEntry, addLabel, addNoConnect, addNote, addWire, emptyDesign, placePart } from "@bettercad/electronics";
 import { sceneSvg } from "../drawing/export/svg";
 import { schematicScene } from "./sheetScene";
 
@@ -64,5 +64,17 @@ describe("notes on paper (#733)", () => {
     expect(scene.labels.map((l) => l.text)).toContain("Status light");
     expect(scene.strokes.some((s) => s.curve.kind === "circle")).toBe(true);
     expect(sceneSvg(scene)).toContain("Status light");
+  });
+});
+
+describe("a bus on paper (#756)", () => {
+  it("prints the bus heavier than a wire, with its name and entries", () => {
+    let d = circuit();
+    const made = addBus(d, "sh1", [[-30.48, 10.16], [-30.48, -10.16]], "D[0..7]"); // prettier-ignore
+    d = addBusEntry(made.design, "sh1", made.id, [-29, 0], "D0");
+    const scene = schematicScene(d, d.sheets[0]!, { size: "A4", title: { title: "Bus", author: "Ada", date: "2026-11-27" } });
+    expect(scene.labels.map((l) => l.text)).toEqual(expect.arrayContaining(["D[0..7]", "D0"]));
+    const widths = scene.strokes.filter((s) => s.layer === "visible").map((s) => s.width);
+    expect(Math.max(...widths)).toBeGreaterThan(0.5);
   });
 });

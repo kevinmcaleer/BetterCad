@@ -291,6 +291,26 @@ export interface Sheet {
   notes?: (Shape & { id: Id })[];
   /** Things gathered in a named outline that move as one (#766). A thing is in one group at most. */
   groups?: SchGroup[];
+  /** Buses (#756): thick lines named for the nets they carry, such as D[0..7]. Drawing only: nets come from labels. */
+  buses?: Bus[];
+  /** Short slanted pieces where a wire leaves a bus (#756). */
+  busEntries?: BusEntry[];
+}
+
+/** A bus (#756): a run of points, and a name such as "D[0..7]" for the nets it carries. It joins nothing itself. */
+export interface Bus {
+  id: Id;
+  name: string;
+  pts: P2[];
+}
+
+/** A wire's way off a bus (#756): from (x, y) on the bus, slanting `dx`, `dy` (each 1 or -1) one grid step out. */
+export interface BusEntry {
+  id: Id;
+  x: number;
+  y: number;
+  dx: 1 | -1;
+  dy: 1 | -1;
 }
 
 /** A group on a sheet: a name, and the ids of the symbols, wires, labels and marks inside its outline. */

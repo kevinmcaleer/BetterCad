@@ -1,6 +1,8 @@
 import { PIN_TYPES, isPower, type CheckLevel, type ElectronicsDesign, type Id, type P2, type PinType } from "./model";
 import { byRef, netAt, netlist, type NetPin, type Netlist } from "./nets";
 import { isJoined, pointsJoined, voltRange, voltsOf } from "./points";
+import { entryEnd } from "./bus";
+import { key } from "./geom";
 
 /**
  * The electrical rules check (#634): what is wrong with a schematic before it goes to a board, in plain words, with
@@ -202,15 +204,18 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
       at(p),
     );
 
+  const onEntry = new Set(d.sheets.flatMap((s) => (s.busEntries ?? []).map((e) => `${s.id}@${key(...entryEnd(e))}`)));
   for (const net of nl.nets) {
     const k = pinsKey(net.pins);
     const first = net.pins[0];
     const where = first ? { ...at(first), parts: [...new Set(net.pins.map((p) => p.part))] } : {};
     for (const end of net.openEnds)
-      add("wire-open", `${end.sheet}@${end.at.join(",")}`, `A wire on ${net.name} ends in mid air.`, "Carry it on to a pin or another wire, or delete it.", {
-        sheet: end.sheet,
-        at: end.at,
-      });
+      // A wire that leaves a bus by an entry (#756) ends where it should.
+      if (!onEntry.has(`${end.sheet}@${key(end.at[0], end.at[1])}`))
+        add("wire-open", `${end.sheet}@${end.at.join(",")}`, `A wire on ${net.name} ends in mid air.`, "Carry it on to a pin or another wire, or delete it.", {
+          sheet: end.sheet,
+          at: end.at,
+        });
 
     const outs = net.pins.filter((p) => DRIVERS.includes(p.type));
     let clash: PinMeet = "ok";

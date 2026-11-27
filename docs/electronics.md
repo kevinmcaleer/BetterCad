@@ -236,7 +236,15 @@ pre-order on that date; MSKSEMI's L293DNE(MS), C19632281, was the in-stock part 
 A label used once is a warning unless it names a net already wired between two or more pins (KiCad does the same),
 so naming a drawn wire for the board does not count as a slip.
 
-Left for later: buses.
+**Buses** (#756, `bus.ts`, the Bus tool, U). Click to draw a bus, and double-click, click the last corner again or press
+Esc to finish. Its name is asked for then, such as `D[0..7]` (`busMembers` reads ranges counting up or down, and
+`{SDA SCL}` lists). A bus is drawn thick with its name over its start. With the Bus tool, a click on a bus takes a
+wire off it: a slanted entry from the nearest grid point, leaning to the side clicked, a short wire on, and a label
+naming the net, the next of the bus's names not yet on the sheet. A bus joins nothing by itself, so the nets are
+exactly what the labels alone give, as in KiCad and Eagle; a wire ending on an entry is not "in mid air". Double-
+click a bus to rename it. Buses and their entries move, copy and delete like wires, print in the PDF a heavier line
+than a wire, go to KiCad as `bus`, `bus_entry` and a label on the bus, and come in from KiCad and Eagle drawn (Eagle
+has no entries; its wires end on the bus).
 
 ## More than one sheet (#636)
 
@@ -259,7 +267,7 @@ adds is the way to make and move between them.
   stays joined, and is the block's way in and out. Rename those on the copy where each copy needs its own. A copy is
   a copy: it does not follow the sheet it came from.
 
-Not built: buses (a group of signals drawn as one line), hierarchy with sheet pins, and blocks that stay linked to
+Not built: hierarchy with sheet pins, and blocks that stay linked to
 their master.
 
 ## Laying out a board (#637 to #643)
@@ -889,7 +897,7 @@ What it reads:
   footprint of the same name if there is one, and is listed if there is not.
 
 What does not come across, each listed in the dialog when a project has it: copper on inside layers (the top and
-bottom still come in), blind and buried vias, buses as drawings (their wires still join by name), group buses
+bottom still come in), blind and buried vias, group buses
 between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions other than straight ones
 (leaders, radii, centre marks), drawings on user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
 flags. Curved tracks come in as curves (#755), their bulge worked out from KiCad's start, middle and end. A pad whose copper sits off the
@@ -947,10 +955,8 @@ How Eagle's things become ours:
 - Clearance, least track width, least drill, copper to edge and least ring come from the board's design rules, and
   net classes with a width or clearance of their own come across with their nets.
 
-What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, buses
-as drawings, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
-drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as short
-straight pieces. Hatched pours keep their hatching (#747). Octagon pads come in drawn corner by corner, and a pad Eagle draws
+What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
+drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as curves (#755). Hatched pours keep their hatching (#747). Octagon pads come in drawn corner by corner, and a pad Eagle draws
 off the middle of its hole ("offset") keeps its copper where Eagle has it (#744). Assembly variants are not
 read, apart from a part marked not populated. Files from Eagle older than 6 are binary and are refused with a note
 to save them from a newer Eagle. A board without its schematic does not open.

@@ -11,6 +11,8 @@ import {
   type BoardLayer,
   type CopperLayer,
   type ComponentDef,
+  type Bus,
+  type BusEntry,
   type Corner,
   type ElectronicsDesign,
   type FootprintDef,
@@ -188,6 +190,20 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         );
     }
 
+    // The buses themselves, drawn (#756): each run of joined pieces, named by the label on it.
+    const busList: Bus[] = [];
+    const entryList: BusEntry[] = [];
+    const named = new Map<number, string>();
+    for (const item of tree)
+      if (isList(item) && ["label", "global_label", "hierarchical_label"].includes(head(item)) && members(text(item))) {
+        const g = busAt(at(child(item, "at")));
+        if (g >= 0 && !named.has(g)) named.set(g, text(item));
+      }
+    for (const g of new Set(buses.map((_, i) => find(i)))) {
+      const pieces = buses.filter((_, i) => find(i) === g);
+      for (const run of joinRuns([{ net: "", layer: "top", width: 0, pieces }])) busList.push({ id: eid("bus"), name: named.get(g) ?? "BUS", pts: run.pts });
+    }
+
     for (const item of tree) {
       if (!isList(item)) continue;
       const kind = head(item);
@@ -301,8 +317,17 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         const size = num(child(child(child(item, "effects"), "font"), "size"), 1, 1.27);
         const p = at(child(item, "at"));
         sheet.notes!.push({ id: eid("n"), kind: "text", x: p[0], y: p[1], text: text(item), size, align: "left" });
-      } else if (kind === "bus" || kind === "bus_entry") dropped.add("buses and their entries, which are not drawn (the wires they carry still join by name)");
-      else if (kind === "image") dropped.add("pictures");
+      } else if (kind === "bus_entry") {
+        // A wire's way off a bus (#756): whichever end is on the bus is where it starts.
+        const p = at(child(item, "at"));
+        const size = child(item, "size");
+        const [sx, sy] = [num(size, 1), num(size, 2)];
+        if (!sx || !sy) continue;
+        const far: P2 = [r4(p[0] + sx), r4(p[1] - sy)];
+        const onBus = busAt(p) >= 0 || busAt(far) < 0;
+        const [from, to] = onBus ? [p, far] : [far, p];
+        entryList.push({ id: eid("be"), x: from[0], y: from[1], dx: to[0] > from[0] ? 1 : -1, dy: to[1] > from[1] ? 1 : -1 });
+      } else if (kind === "image") dropped.add("pictures");
       else if (kind === "rectangle") {
         // Boxes and circles drawn on the sheet come in as notes (#733).
         const a = at(child(item, "start"));
@@ -323,6 +348,8 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
       else if (kind === "netclass_flag" || kind === "directive_label") dropped.add("net class flags");
     }
     if (!sheet.notes!.length) delete sheet.notes;
+    if (busList.length) sheet.buses = busList;
+    if (entryList.length) sheet.busEntries = entryList;
   };
   walk(rootFile, `/${text(child(root, "uuid"))}`, "", "", 0, new Map());
   for (const n of apart)

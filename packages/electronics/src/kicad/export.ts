@@ -391,6 +391,7 @@ function pageOf(d: ElectronicsDesign, sheet: Sheet): Page {
     see(w.b);
   }
   for (const l of [...sheet.labels, ...sheet.junctions, ...sheet.noConnects]) see([l.x, l.y]);
+  for (const b of sheet.buses ?? []) b.pts.forEach(see);
   if (x1 > x2) [x1, y1, x2, y2] = [0, 0, 0, 0];
   const snap = (v: number) => Math.round(v / GRID) * GRID;
   const ox = snap(MARGIN - x1);
@@ -448,6 +449,14 @@ function sheetFile(
     for (let i = 0; i + 1 < stops.length; i += 1)
       out.push(["wire", ["pts", xy(page.at(stops[i]!)), xy(page.at(stops[i + 1]!))], stroke(0), ["uuid", uuidOf(i ? `${w.id}:${i}` : w.id)]]);
   }
+  // Buses (#756): a piece of bus for each straight run, its name as a label on its start, and the entries.
+  for (const b of sheet.buses ?? []) {
+    for (let i = 0; i + 1 < b.pts.length; i += 1)
+      out.push(["bus", ["pts", xy(page.at(b.pts[i]!)), xy(page.at(b.pts[i + 1]!))], stroke(0), ["uuid", uuidOf(i ? `${b.id}:${i}` : b.id)]]);
+    out.push(["label", s(b.name), ["at", ...at(b.pts[0]!), "0"], font(1.27, ["justify", "left", "bottom"]), ["uuid", uuidOf(`${b.id}:name`)]]);
+  }
+  for (const e of sheet.busEntries ?? [])
+    out.push(["bus_entry", ["at", ...at([e.x, e.y])], ["size", n(e.dx * GRID), n(-e.dy * GRID)], stroke(0), ["uuid", uuidOf(e.id)]]);
   for (const l of sheet.labels) {
     const rot = l.rot ?? 0;
     const just = rot === 180 || rot === 270 ? "right" : "left";

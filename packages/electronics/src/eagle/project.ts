@@ -540,8 +540,17 @@ export function importEagleProject(files: ImportFile[], o: ProjectOptions = {}):
       if (shape) (sheet.notes ??= []).push({ ...shape, id: eid("n") });
       else dropped.add("drawings on a sheet that could not be kept");
     }
-    const buses = kids(kid(el, "busses"), "bus").length;
-    if (buses) dropped.add("buses, which are not drawn (the wires they carry still join by name)", buses);
+    // Buses (#756): drawn, by name. Eagle has no entries; its wires simply end on the bus.
+    for (const bus of kids(kid(el, "busses"), "bus")) {
+      const pieces = kids(bus, "segment").flatMap((seg) =>
+        kids(seg, "wire").map((w): [P2, P2] => [
+          [r4(numOf(w, "x1")), r4(numOf(w, "y1"))],
+          [r4(numOf(w, "x2")), r4(numOf(w, "y2"))],
+        ]),
+      );
+      for (const run of joinRuns([{ net: "", layer: "top", width: 0, pieces }]))
+        (sheet.buses ??= []).push({ id: eid("bus"), name: bus.attrs.name ?? "BUS", pts: run.pts });
+    }
     if (kids(kid(el, "moduleinsts"), "moduleinst").length) dropped.add("module blocks on a sheet");
     for (const net of kids(kid(el, "nets"), "net")) {
       const name = net.attrs.name ?? "";

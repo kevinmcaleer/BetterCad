@@ -1,6 +1,7 @@
 import {
   GRID,
   boardPads,
+  entryEnd,
   outlinePoints,
   packageOf,
   pinDirOnSheet,
@@ -53,6 +54,8 @@ export function schematicScene(d: ElectronicsDesign, whole: Sheet, page: Schemat
         junctions: whole.junctions.filter((x) => !away.has(x.id)),
         noConnects: whole.noConnects.filter((x) => !away.has(x.id)),
         ...(whole.notes ? { notes: whole.notes.filter((x) => !away.has(x.id)) } : {}),
+        ...(whole.buses ? { buses: whole.buses.filter((x) => !away.has(x.id)) } : {}),
+        ...(whole.busEntries ? { busEntries: whole.busEntries.filter((x) => !away.has(x.id)) } : {}),
       }
     : whole;
   const paper = newSheet(sheet.name, { size: page.size, landscape: true, block: { type: "Schematic", ...page.title } });
@@ -156,6 +159,12 @@ export function schematicScene(d: ElectronicsDesign, whole: Sheet, page: Schemat
     }
   }
   for (const w of sheet.wires) line([P(w.a), P(w.b)], pen(0.2));
+  // Buses (#756): a heavier line, named over its start, and their slanted entries.
+  for (const b of sheet.buses ?? []) {
+    line(b.pts.map(P), pen(0.6));
+    text(b.name, P([b.pts[0]![0] + 0.5, b.pts[0]![1] + 0.6]), 1.27, "start", "alphabetic");
+  }
+  for (const e of sheet.busEntries ?? []) line([P([e.x, e.y]), P(entryEnd(e))], pen(0.2));
   for (const p of teePoints(sheet)) disc(P(p), 0.45 * s);
   for (const j of sheet.junctions) disc(P([j.x, j.y]), 0.45 * s);
   const parts = new Map(d.parts.map((p) => [p.id, p]));

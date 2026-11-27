@@ -1,10 +1,12 @@
 import {
   boxesTouch,
   distToSegment,
+  entryEnd,
   emptyBox,
   grow,
   placeOnSheet,
   type Box,
+  type Bus,
   type ElectronicsDesign,
   type P2,
   type Shape,
@@ -15,7 +17,7 @@ import { GROUP_NAME, type GroupOutline } from "@bettercad/electronics/groups";
 
 /** What the pointer is over on a sheet. `id` is the thing's own id; for a symbol, `part` is its part. */
 export interface SchHit {
-  kind: "symbol" | "wire" | "label" | "junction" | "noConnect" | "note";
+  kind: "symbol" | "wire" | "label" | "junction" | "noConnect" | "note" | "bus" | "busEntry";
   id: string;
   part?: string;
 }
@@ -78,6 +80,12 @@ function onNote(n: Shape, p: P2, tol: number): boolean {
   return inBox(p, noteBox(n), tol * 0.5);
 }
 
+/** Where a bus's name sits: above the start of its first piece, as KiCad puts a bus label (#756). */
+export function busNameBox(b: Bus): Box {
+  const [x, y] = b.pts[0]!;
+  return { x1: x, y1: y + 0.4, x2: x + Math.max(2, b.name.length * 0.95), y2: y + 2.2 };
+}
+
 export const inBox = (p: P2, b: Box, pad = 0) => p[0] >= b.x1 - pad && p[0] <= b.x2 + pad && p[1] >= b.y1 - pad && p[1] <= b.y2 + pad;
 
 /** Everything under a point, nearest kind first: marks and labels, then wires, then symbols. `tol` is in mm. */
@@ -89,6 +97,10 @@ export function hitSheet(d: ElectronicsDesign, sheet: Sheet, p: P2, tol: number)
     if (inBox(p, { x1: l.x - 0.5, y1: l.y - 0.3, x2: l.x + Math.max(2, l.name.length * 0.95), y2: l.y + 1.8 }, tol * 0.5))
       out.push({ kind: "label", id: l.id });
   for (const w of sheet.wires) if (distToSegment(p, w.a, w.b) <= tol) out.push({ kind: "wire", id: w.id });
+  for (const e of sheet.busEntries ?? []) if (distToSegment(p, [e.x, e.y], entryEnd(e)) <= tol) out.push({ kind: "busEntry", id: e.id });
+  for (const b of sheet.buses ?? [])
+    if (b.pts.some((a, i) => i > 0 && distToSegment(p, b.pts[i - 1]!, a) <= tol + 0.3) || inBox(p, busNameBox(b), tol * 0.5))
+      out.push({ kind: "bus", id: b.id });
   for (const n of sheet.notes ?? []) if (onNote(n, p, tol)) out.push({ kind: "note", id: n.id });
   const parts = new Map(d.parts.map((x) => [x.id, x]));
   for (const s of [...sheet.symbols].reverse()) {
@@ -111,6 +123,8 @@ export function boxSheet(d: ElectronicsDesign, sheet: Sheet, a: P2, b: P2): stri
   for (const l of sheet.labels) if (inBox([l.x, l.y], box)) out.push(l.id);
   for (const j of sheet.junctions) if (inBox([j.x, j.y], box)) out.push(j.id);
   for (const n of sheet.noConnects) if (inBox([n.x, n.y], box)) out.push(n.id);
+  for (const b of sheet.buses ?? []) if (b.pts.every((p) => inBox(p, box))) out.push(b.id);
+  for (const e of sheet.busEntries ?? []) if (inBox([e.x, e.y], box) && inBox(entryEnd(e), box)) out.push(e.id);
   for (const n of sheet.notes ?? []) {
     const nb = noteBox(n);
     if (inBox([nb.x1, nb.y1], box) && inBox([nb.x2, nb.y2], box)) out.push(n.id);

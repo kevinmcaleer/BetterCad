@@ -193,7 +193,7 @@ describe("the electronics workspace", () => {
   it("a view-only model can look but not change", () => {
     act(() => showView("schematic"));
     setup(ledAndResistor(), { readOnly: true });
-    for (const name of ["Components", "Wire", "Net label", "Push to PCB"])
+    for (const name of ["Components", "Wire", "Bus", "Net label", "Push to PCB"])
       expect(screen.getByRole("button", { name })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("button", { name: "Fit" })).toBeEnabled();
   });

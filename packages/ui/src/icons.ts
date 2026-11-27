@@ -125,6 +125,7 @@ export const pcb = "M3 5h18v14H3zM7 9h4v4H7zM11 11h3l3 3M17 14v.01M7 16h.01M17 8
 export const chip = "M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4";
 export const wire = "M4 18h7V6h9M4 18v.01M20 6v.01";
 export const netLabel = "M3 8h11l5 4-5 4H3zM7 12h4";
+export const bus = "M5 3v18M5 7l3 3h12M5 13l3 3h12";
 export const noConnect = "M4 12h8M14 8l6 8M20 8l-6 8";
 export const junction = "M3 12h18M12 12v8M12 12a2 2 0 1 0 .01 0";
 export const powerSymbol = "M12 3v9M6 12h12M8.5 16h7M11 20h2";
@@ -351,6 +352,7 @@ export const ICONS = {
   chip,
   wire,
   netLabel,
+  bus,
   noConnect,
   junction,
   powerSymbol,

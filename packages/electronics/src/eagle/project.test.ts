@@ -266,7 +266,6 @@ describe("opening an Eagle project", () => {
       "Board: Left out: 1 dimensions",
       "Board: Left out: 1 drawings on layers that are not kept (document, stop, cream and user layers)",
       "Schematic: Left out: 1 frames and other symbols with no pins",
-      "Schematic: Left out: 1 buses, which are not drawn (the wires they carry still join by name)",
     ]);
   });
 

@@ -327,6 +327,7 @@ const DRAW: Record<string, () => string> = {
     `<rect x="6.5" y="6.5" width="11" height="11" rx="1" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.3"/>` +
     `<circle cx="9.5" cy="9.5" r="1.2" fill="${HI}"/>`,
   wire: () => hiLine("M4 18h7V6h9", 2) + dot(4, 18, 2) + dot(20, 6, 2),
+  bus: () => line("M5 3v18", EDGE, 3.4) + hiLine("M5 7l3 3h12M5 13l3 3h12", 1.8),
   netLabel: () =>
     `<path d="M3 7.5h11l5.5 4.5-5.5 4.5H3z" fill="${HI}" stroke="${EDGE}" stroke-width="1.2" stroke-linejoin="round"/>` + line("M6.5 12h5", EDGE, 1.2),
   noConnect: () => line("M3 12h9", EDGE, 1.8) + hiLine("M14 8l6 8M20 8l-6 8", 2),

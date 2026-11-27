@@ -125,6 +125,17 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         run: arm("wire"),
       },
       {
+        id: "bus",
+        group: "Wire",
+        label: "Bus",
+        icon: "bus",
+        key: "U",
+        tip: "Draw a bus such as D[0..7], or click one to take a wire off it",
+        on: ui.schTool === "bus",
+        disabled: readOnly,
+        run: arm("bus"),
+      },
+      {
         id: "label",
         group: "Wire",
         label: "Net label",
@@ -505,6 +516,7 @@ function commands(design: () => ElectronicsDesign): Command[] {
   ] as const;
   const tools: [SchTool, string, string, IconName][] = [
     ["wire", "Wire", "w", "wire"],
+    ["bus", "Bus", "u", "bus"],
     ["label", "Net label", "l", "netLabel"],
     ["noConnect", "Not connected", "q", "noConnect"],
     ["junction", "Junction", "j", "junction"],
@@ -1096,12 +1108,12 @@ export default function ElectronicsView({
         >
           <input
             className="bc-text"
-            aria-label={ask.group ? "Group name" : ask.note ? "Note text" : "Net name"}
+            aria-label={ask.group ? "Group name" : ask.note ? "Note text" : ask.bus ? "Bus name" : "Net name"}
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
             onBlur={() => setAsk(null)}
-            placeholder={ask.group ? "Group name" : ask.note ? "Note" : "Net name"}
+            placeholder={ask.group ? "Group name" : ask.note ? "Note" : ask.bus ? "Bus name, such as D[0..7]" : "Net name"}
           />
         </form>
       )}
@@ -1131,13 +1143,15 @@ export default function ElectronicsView({
                 ? `Placing ${ui.placing?.name ?? ui.placingBlock!.built.spec.name}. Click to place, Esc to stop.`
                 : ui.schTool === "wire"
                   ? "Click a pin to start a wire, click again to turn or finish."
-                  : ui.schTool === "text"
-                    ? "Click where the note goes."
-                    : ui.schTool === "line" || ui.schTool === "rect" || ui.schTool === "circle"
-                      ? `Click to start the ${ui.schTool === "rect" ? "box" : ui.schTool}, click again to finish it.`
-                      : ui.net
-                        ? `Net ${ui.net}`
-                        : "Grid 2.54 mm"}
+                  : ui.schTool === "bus"
+                    ? "Click to draw a bus, double-click to finish. Click a bus to take a wire off it."
+                    : ui.schTool === "text"
+                      ? "Click where the note goes."
+                      : ui.schTool === "line" || ui.schTool === "rect" || ui.schTool === "circle"
+                        ? `Click to start the ${ui.schTool === "rect" ? "box" : ui.schTool}, click again to finish it.`
+                        : ui.net
+                          ? `Net ${ui.net}`
+                          : "Grid 2.54 mm"}
             </span>
           </>
         ) : (
