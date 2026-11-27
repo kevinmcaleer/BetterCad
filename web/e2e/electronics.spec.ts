@@ -1006,7 +1006,7 @@ test.describe("on a wide screen", () => {
     await width.press("Enter");
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^PCB/ }).click();
-    const status = page.getByText(/^Board \d+(\.\d+)? × \d+(\.\d+)? mm · Grid/);
+    const status = page.getByText(/^Board \d+(\.\d+)? × \d+(\.\d+)? mm$/);
     await expect(status).toHaveText(/^Board 40 × 20 mm/, { timeout: 20_000 });
     await page.getByRole("button", { name: "Board setup" }).click();
     await expect(
