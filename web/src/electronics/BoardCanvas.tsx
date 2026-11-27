@@ -824,7 +824,12 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         onDown={onDown}
         onMove={onMove}
         onUp={onUp}
-        onDouble={() => {
+        onDouble={(p) => {
+          // Double-click a pad: the inspector opens the name of the net its pin is on.
+          if (tool === "select" && !readOnly) {
+            const pad = hitBoard(design, pads, p.world, tol, shown).find((h) => h.kind === "pad" && h.pad?.pad.number);
+            if (pad?.pad) return eui.set({ selected: [pad.pad.part], pin: { part: pad.pad.part, pin: pad.pad.pad.number, n: (eui.get().pin?.n ?? 0) + 1 } });
+          }
           if (route) setRoute(null);
           // The second click of the pair already added a corner where the first one did, or tried to.
           if (area.length > 2) closeArea();

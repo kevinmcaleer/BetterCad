@@ -488,6 +488,18 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
           if (readOnly) return;
           if (tool === "wire") return setFrom(null);
           const hit = hitSheet(design, sheet, p.world, tol).filter((h) => !hidden.has(h.id))[0];
+          // Double-click a pin's end: the inspector opens the name of the net it is on.
+          const pin =
+            hit?.kind !== "label" && hit?.kind !== "note"
+              ? pins.find((x) => !x.power && !x.hidden && Math.hypot(x.at[0] - p.world[0], x.at[1] - p.world[1]) <= tol)
+              : undefined;
+          const host = pin && sheet.symbols.find((y) => y.part === pin.part && !hidden.has(y.id));
+          if (pin && host && !foldedAt(p.world))
+            return eui.set({
+              selected: [host.id],
+              inGroup: groupOf(sheet, host.id)?.id ?? null,
+              pin: { part: pin.part, pin: pin.pin, n: (eui.get().pin?.n ?? 0) + 1 },
+            });
           // Double-click a folded block's box to open it again (#775).
           const box = hit?.kind === "label" ? undefined : foldedAt(p.world);
           if (box) return edit((d) => setFolded(d, sheet.id, [box.id], false), "Unfold block");

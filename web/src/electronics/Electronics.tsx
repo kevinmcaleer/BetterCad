@@ -43,6 +43,7 @@ const BoardSetup = lazy(() => import("./BoardSetup"));
 const BoardProps = lazy(() => import("./BoardProps"));
 const GroupProps = lazy(() => import("./GroupProps"));
 const NetProps = lazy(() => import("./NetProps"));
+const PinNets = lazy(() => import("./PinNets"));
 const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
 const FindCard = lazy(() => import("./Find"));
@@ -1192,7 +1193,6 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
     const power = isPower(design, part);
     const set = (change: Parameters<typeof changePart>[2], label: string) =>
       edit((d) => changePart(d, part.id, change), label, `ec-part-${part.id}-${Object.keys(change).join()}`);
-    const nets = def.symbol.pins.map((p) => ({ pin: p, net: nl.of.get(`${part.id}:${p.number}`) }));
     return (
       <PropsPanel
         sections={[
@@ -1319,14 +1319,9 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
                   id: "ec-pins",
                   title: "Pins",
                   content: (
-                    <dl className="bc-facts">
-                      {nets.map(({ pin, net }) => (
-                        <div key={pin.number} style={{ display: "contents" }}>
-                          <dt>{pin.name && pin.name !== pin.number ? `${pin.number} ${pin.name}` : pin.number}</dt>
-                          <dd>{net ?? (nl.noConnect.has(`${part.id}:${pin.number}`) ? "Left open" : "Not connected")}</dd>
-                        </div>
-                      ))}
-                    </dl>
+                    <Suspense fallback={null}>
+                      <PinNets part={part} def={def} nl={nl} edit={edit} readOnly={readOnly} />
+                    </Suspense>
                   ),
                 },
               ]),

@@ -1243,3 +1243,10 @@ button.bc-ec-pill {
   color: var(--bc-color-danger);
   border-color: var(--bc-color-danger);
 }
+/* A part's pins in the inspector, each with its net's name to change in place. */
+.bc-ec-pin-nets {
+  align-items: center;
+}
+.bc-ec-pin-nets dd .bc-text {
+  text-align: left;
+}
