@@ -22,7 +22,7 @@ import { noteStrokes } from "@bettercad/electronics/pcb/notes";
 import { REF_SIZE, boardTextLook, penFor, textStrokes } from "@bettercad/electronics/fab/font";
 import type { Colours } from "./colours";
 import { drawGroup, rubber } from "./drawSchematic";
-import { toScreen, type View2D } from "./view2d";
+import { drawGridDots, toScreen, type View2D } from "./view2d";
 
 /** The layers the Layers card lists. */
 export type LayerId = "top" | "bottom" | `in${number}` | "silk-top" | "silk-bottom" | "courtyard" | "edge" | "holes" | "notes" | "ratsnest";
@@ -103,6 +103,8 @@ export interface BoardLook {
   teardrops?: { net: string; layer: CopperLayer; pts: P2[] }[];
   /** Corners of the picked track or area that drag (#742), and the one picked. */
   handles?: { pts: P2[]; picked?: number };
+  /** The grid to draw as dots, mm. None draws no grid. */
+  grid?: number;
 }
 
 /**
@@ -335,7 +337,10 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
   ctx.fillStyle = c["ec-pcb-bg"];
   ctx.fillRect(0, 0, size.w, size.h);
   const board = d.board;
-  if (!board) return;
+  if (!board) {
+    if (look.grid) drawGridDots(ctx, v, size, look.grid, c["ec-pcb-ink"], 0.6);
+    return;
+  }
   const show = (l: LayerId) => !look.hidden.has(l);
   const lit = (net: string) => !look.net || look.net === net;
   // A net with a colour of its own (#740) wears it on its unrouted lines, and on its tracks while it is lit.
@@ -355,6 +360,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       else ctx.moveTo(s[0], s[1]);
     });
   ctx.fill("evenodd");
+  if (look.grid) drawGridDots(ctx, v, size, look.grid, c["ec-pcb-ink"], 0.6);
 
   // From the far side up, with the layer being worked on last, so it is on top.
   const all = layersOf(board);

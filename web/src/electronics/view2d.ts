@@ -40,6 +40,27 @@ export function fit(box: Box, size: { w: number; h: number }, clear = { top: 0, 
 /** Snaps a world point to a grid. */
 export const snap = (p: P2, grid: number): P2 => [Math.round(p[0] / grid) * grid, Math.round(p[1] / grid) * grid].map((n) => Math.round(n * 1e6) / 1e6) as P2;
 
+/**
+ * The grid as dots, every step worth drawing, with a bigger, stronger dot every fifth step so distances read at a
+ * glance. Sizes are screen pixels; `strength` fades it, under copper on the board.
+ */
+export function drawGridDots(ctx: CanvasRenderingContext2D, v: View2D, size: { w: number; h: number }, base: number, colour: string, strength = 1) {
+  const step = gridStep(v, base, 12);
+  const a = toWorld(v, [0, size.h]);
+  const b = toWorld(v, [size.w, 0]);
+  ctx.save();
+  ctx.fillStyle = colour;
+  for (let i = Math.ceil(a[0] / step); i * step <= b[0]; i++)
+    for (let j = Math.ceil(a[1] / step); j * step <= b[1]; j++) {
+      const major = i % 5 === 0 && j % 5 === 0;
+      const r = major ? 2.5 : 1.5;
+      ctx.globalAlpha = (major ? 0.9 : 0.55) * strength;
+      const s = toScreen(v, [i * step, j * step]);
+      ctx.fillRect(s[0] - r / 2, s[1] - r / 2, r, r);
+    }
+  ctx.restore();
+}
+
 /** The grid spacing worth drawing: the base grid, doubled until its dots are far enough apart to read. */
 export function gridStep(v: View2D, base: number, minPx = 9): number {
   let step = base;

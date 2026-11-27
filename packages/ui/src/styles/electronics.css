@@ -1404,3 +1404,9 @@ button.bc-ec-pill {
   padding: 0 var(--bc-space-2) 0 0;
   text-align: left;
 }
+
+/* ---- the grid button on the status strip: show or hide the grid, and its size on the board */
+.bc-ec-grid-button {
+  gap: var(--bc-space-2);
+  white-space: nowrap;
+}

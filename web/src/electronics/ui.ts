@@ -43,6 +43,8 @@ export interface EUi {
   focus: number;
   /** The grid parts, tracks and holes snap to on the board, mm. */
   grid: number;
+  /** The grid's dots are drawn on the schematic and the board. Saved in this browser. */
+  gridShown: boolean;
   /** Routing stops at anything the rules say a track must keep clear of. Off lets a track go anywhere. */
   keepClear: boolean;
   /** Routing moves other tracks aside when one is in the way (#646). */
@@ -68,6 +70,27 @@ export interface EUi {
 /** The board grids on offer, mm: round metric steps and the inch pitches parts are made on. */
 export const BOARD_GRIDS = [0.1, 0.25, 0.5, 1, 1.27, 2.54];
 
+const GRID_KEY = "bettercad.electronicsGrid";
+
+function readGridShown(): boolean {
+  try {
+    return localStorage.getItem(GRID_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+/** Shows or hides the grid on the schematic and the board, and remembers the choice in this browser. */
+export function toggleGrid() {
+  const shown = !eui.get().gridShown;
+  eui.set({ gridShown: shown });
+  try {
+    localStorage.setItem(GRID_KEY, shown ? "on" : "off");
+  } catch {
+    // The choice lasts for this visit.
+  }
+}
+
 const start = (): EUi => ({
   view: null,
   last: "schematic",
@@ -85,6 +108,7 @@ const start = (): EUi => ({
   spot: null,
   focus: 0,
   grid: 0.5,
+  gridShown: readGridShown(),
   keepClear: true,
   shove: false,
   unrouted: null,

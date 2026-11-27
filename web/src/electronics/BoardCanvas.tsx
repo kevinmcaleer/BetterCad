@@ -868,6 +868,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           ui.pourOutlines,
           measuring,
           handles,
+          ui.gridShown,
+          grid,
         ]}
         draw={(ctx, v, size) =>
           drawBoard(ctx, v, size, withGhost?.design ?? design, colours, {
@@ -890,6 +892,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             groups: groupLines,
             handles,
             teardrops: drops,
+            ...(ui.gridShown ? { grid } : {}),
           })
         }
         onDown={onDown}
