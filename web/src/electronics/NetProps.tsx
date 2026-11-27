@@ -3,6 +3,7 @@ import { netlist, type ElectronicsDesign, type NetColour } from "@bettercad/elec
 import { netRules } from "@bettercad/electronics/pcb/copper";
 import { NET_COLOURS, addNetClass, changeNetClass, classOf, netFacts, setNetClass, setNetLook, setNetWidth } from "@bettercad/electronics/pcb/netclass";
 import { layerShort, layersOf } from "@bettercad/electronics/pcb/stack";
+import { renameNet } from "@bettercad/electronics/netName";
 import { Button, NumberField } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { eui } from "./ui";
@@ -34,6 +35,29 @@ export default function NetProps({ design, edit, net, readOnly }: { design: Elec
   return (
     <fieldset className="bc-ec-set" disabled={readOnly}>
       <legend>Net {net}</legend>
+      <label className="bc-field-label" htmlFor={`${ids}n`}>
+        Name
+      </label>
+      <input
+        id={`${ids}n`}
+        key={net}
+        className="bc-text"
+        defaultValue={net}
+        spellCheck={false}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.value = net;
+            e.currentTarget.blur();
+          }
+        }}
+        onBlur={(e) => {
+          const to = e.target.value.trim();
+          if (to && to !== net) edit((d) => renameNet(d, net, to), `Rename net ${net} to ${to}`);
+        }}
+      />
       {board && rules && facts ? (
         <>
           <label className="bc-field-label" htmlFor={`${ids}c`}>
