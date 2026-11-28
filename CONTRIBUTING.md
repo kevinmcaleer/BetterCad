@@ -49,6 +49,27 @@ change is a bug, fix it. If it is deliberate (a better fillet, an OCCT upgrade):
 
 Fixtures work the same way, with `NIGHTLY=1 UPDATE_GOLDEN=1 npm run test:nightly`. See `fixtures/README.md`.
 
+## The design-thinking check
+
+Every new feature or change passes this check before it is built, and the pull request answers it. It keeps BetterCad
+a simple surface with power underneath. The [design-thinking review](https://claude.ai/artifact/NVUZcLGpdczgxfk5ecZWfH)
+and epic #800 explain where it comes from.
+
+1. **Who and which journey.** Name the person (Sam, new to CAD and building a first robot, or Priya, a maker who knows
+   Fusion or KiCad) and the journey it improves: print a first part, make a part to exact sizes, build a jointed robot
+   and send it to Snakie or ROS, wire a board and fit it in a printed case, or show and share it. No journey, no build.
+2. **The problem, seen.** What gets in their way today, and how we know: a test session, a report, a count, or Kev's
+   own use. A feature another CAD tool has is not a reason on its own.
+3. **Where they will find it.** The place on the path they are already on, in their words, not ours. Not only a
+   right-click, a double-click or the account menu; not a new name for something we already have.
+4. **What it costs the beginner.** What Sam sees that wasn't there before. A new button, tab, card or word must earn its
+   place on the first screen, or sit behind the power user's path.
+5. **When it goes wrong.** What they see when it fails, in plain words with a next step.
+6. **How we'll know it worked.** The journey count it should move (epic #800), or the test that showed the gap.
+
+Big or uncertain changes (a new workspace, a new epic, anything that adds a tab) are mocked up and tried with a person
+before they are built.
+
 ## Rules for a change
 
 - Every modelling action is a timeline feature, and every kernel operation needs a golden test.
