@@ -25,6 +25,7 @@ A free, browser-based CAD tool for 3D printing: Fusion-style constrained sketche
 
 ## Rules
 
+- Design thinking filters every new feature or change: answer the six questions in CONTRIBUTING.md, "The design-thinking check" (who and which journey, the problem seen, where they find it, the beginner's cost, failure, how we'll know), in the issue before building and in the PR. No journey, no build. Mock up and try big changes (a new tab, workspace or epic) with a person first.
 - The top bar (logo and tools on one row, or the ribbon) is docked full width along the top edge, like Snakie's toolbar, so the kevsrobots apps switcher sits in the same place in both apps. Below it the 3D view fills the window; panels, view bar, timeline and overlays float over it as cards and never box it in: no docked columns, no frame around the view. Overlays inside the view keep clear of the cards with the `--bc-view-top/left/right/bottom` insets set on `.bc-app`.
 - Tokens only. Components use `var(--bc-…)`; no literal colours outside the generated `tokens.css`. A test enforces it.
 - Never edit `tokens.css` or `tokens.ts` by hand. Change the design system, copy `tokens.json`, run `npm run tokens`.

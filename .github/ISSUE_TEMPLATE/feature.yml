@@ -14,6 +14,11 @@ body:
     validations:
       required: true
   - type: textarea
+    id: who
+    attributes:
+      label: Who you are
+      description: New to CAD, or used to Fusion 360, KiCad or similar? It helps us keep BetterCad simple for beginners.
+  - type: textarea
     id: idea
     attributes:
       label: How you'd like it to work
